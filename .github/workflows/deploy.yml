@@ -1,0 +1,71 @@
+# Build NiftyStats and publish to GitHub Pages on every push to main.
+#
+# This uses the new official actions/deploy-pages approach instead of the older
+# gh-pages branch dance. Cleaner, no permissions hacks, and the deploy summary
+# shows a direct link to the live preview right in the Actions tab.
+#
+# One-time setup on GitHub:
+#   Repo Settings -> Pages -> Source: "GitHub Actions"
+# Without that toggle this workflow runs but the artifact never goes live.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  # Manual re-deploy from the Actions tab, useful when fixing Pages config
+  # without making a trivial commit.
+  workflow_dispatch:
+
+# We need Pages write + id-token write to deploy. read for source code is
+# implicit. No other tokens required.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Cancel in-flight builds when a new push lands. Saves CI minutes and avoids
+# a stale build clobbering a newer one on the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

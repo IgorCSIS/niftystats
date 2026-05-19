@@ -1,0 +1,56 @@
+{
+  "name": "niftystats",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Client-side statistical analysis for non-technical users. Upload a CSV, get plain-English insights.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,md}\""
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.18.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
+    "lucide-react": "^0.469.0",
+    "papaparse": "^5.4.1",
+    "plotly.js-dist-min": "^2.35.3",
+    "pyodide": "^0.27.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-plotly.js": "^2.6.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^24.12.3",
+    "@types/papaparse": "^5.3.15",
+    "@types/plotly.js-dist-min": "^2.3.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-plotly.js": "^2.6.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "prettier": "^3.4.2",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12"
+  },
+  "pnpm": {
+    "//": "core-js and es5-ext postinstall scripts only print donation banners. They aren't required for either package to function. We acknowledge them here so pnpm v11's deps-status-check stops blocking subsequent commands.",
+    "ignoredBuiltDependencies": [
+      "core-js",
+      "es5-ext"
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+/*
+ * NiftyStats global styles.
+ *
+ * We're on Tailwind v4, which means the design system lives inside @theme blocks
+ * in CSS instead of tailwind.config.ts. The advantage: tokens are visible to
+ * both the JIT compiler and the browser devtools without a separate config.
+ *
+ * Palette philosophy:
+ *   - slate-950 base, slate-900 panels: dark, low-glare, terminal-adjacent.
+ *   - emerald-500 single accent: signal, not decoration. We never use it for
+ *     more than one role per screen region.
+ *   - No light mode for v1. Dark is the product.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* Typography. Inter for UI, JetBrains Mono for numbers and code. The mono
+     font matters because p-values and column names belong in a fixed-width
+     face: it signals "this is a computation, not editorial copy." */
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+
+  /* Brand accent. Emerald 500/400 hand-tuned for legibility against slate-950. */
+  --color-accent: oklch(69.6% 0.17 162.48); /* emerald-500 */
+  --color-accent-bright: oklch(76.5% 0.177 163.22); /* emerald-400 */
+  --color-accent-dim: oklch(50.8% 0.118 165.61); /* emerald-700, hover/border */
+
+  /* Motion. Two speeds: 150ms for interactive feedback, 400ms for reveals.
+     Anything longer feels sluggish; anything shorter reads as a glitch. */
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Base layer. Sets the page background, default text color, and font stack.
+   We bake these in so unstyled HTML still looks correct (matters for the
+   Pyodide loading state and any fallback content). */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    background-color: oklch(13.2% 0.013 248); /* slate-950 */
+    color: oklch(96.8% 0.007 247.9); /* slate-100 */
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    /* Tabular-figure numbers everywhere by default. Critical for stat tables;
+       prevents column drift when values change in interactive views. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Selection color uses our accent at low chroma so highlighted text stays
+     readable against the dark background. */
+  ::selection {
+    background-color: oklch(50.8% 0.118 165.61 / 0.35);
+    color: white;
+  }
+}
+
+/* Subtle vignette behind the hero. Single radial gradient, no animation:
+   we don't want the landing page to feel decorative. */
+.bg-grain {
+  background-image: radial-gradient(
+    circle at 50% 0%,
+    oklch(50.8% 0.118 165.61 / 0.10) 0%,
+    transparent 60%
+  );
+}
