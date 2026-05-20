@@ -22,6 +22,8 @@ import { SampleRow } from '@/components/upload/SampleButton'
 import { EngineStatus } from '@/components/upload/EngineStatus'
 import { DescriptiveSection } from '@/components/dashboard/DescriptiveSection'
 import { RelationalSection } from '@/components/dashboard/RelationalSection'
+import { ClusteringSection } from '@/components/dashboard/ClusteringSection'
+import { TimeSeriesSection } from '@/components/dashboard/TimeSeriesSection'
 import { ExportButton } from '@/components/dashboard/ExportButton'
 import { engine } from '@/lib/pyodide/client'
 import { useEngineStatus } from '@/lib/pyodide/useEngineStatus'
@@ -80,7 +82,7 @@ export function Landing() {
               aria-hidden
               className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]"
             />
-            niftystats v0.6 preview
+            niftystats v1.0 preview
           </div>
 
           <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-5xl">
@@ -163,6 +165,12 @@ export function Landing() {
               <DescriptiveSection result={engineStatus.result.descriptive} />
               {engineStatus.result.relational && (
                 <RelationalSection result={engineStatus.result.relational} />
+              )}
+              {engineStatus.result.clustering && (
+                <ClusteringSection outcome={engineStatus.result.clustering} />
+              )}
+              {engineStatus.result.timeSeries && (
+                <TimeSeriesSection result={engineStatus.result.timeSeries} />
               )}
             </div>
             {parsed && (

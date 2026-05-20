@@ -36,8 +36,10 @@ const BUILDING_MESSAGES = [
   'Almost there…',
 ] as const
 
-/** How long each message stays on screen, in ms. */
-const MESSAGE_INTERVAL_MS = 1800
+/** How long each message stays on screen, in ms. PDF build typically takes
+ *  10-25 seconds on a typical dashboard; 5s per message gives the user
+ *  time to actually read each line before the next one swaps in. */
+const MESSAGE_INTERVAL_MS = 5000
 
 interface ExportButtonProps {
   /** Lazy resolver for the DOM element to capture. Called at click time. */

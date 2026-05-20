@@ -29,7 +29,13 @@ import type {
   NumericSummary,
   UnknownSummary,
 } from '@/types/stats'
-import { formatCount, formatDate, formatNumber, formatPct } from './format'
+import {
+  formatCount,
+  formatDate,
+  formatNumber,
+  formatPct,
+  formatStatValue,
+} from './format'
 
 export type NarrativeSeverity = 'info' | 'note' | 'warning'
 
@@ -101,8 +107,14 @@ function buildNumericNarratives(s: NumericSummary): Narrative[] {
 }
 
 function centralTendencyNarrative(s: NumericSummary): Narrative {
-  const mean = formatNumber(s.mean)
-  const median = formatNumber(s.median)
+  // Value-like stats (mean, median, min, max, percentiles) respect the
+  // formatHint so year columns read "2008" instead of "2.01k". Spread-like
+  // stats (std, mad) keep using formatNumber because compact-unit formatting
+  // is genuinely the right call for "spread of 802" vs "spread of 4200".
+  const hint = s.formatHint
+  const val = (v: number) => formatStatValue(v, hint)
+  const mean = val(s.mean)
+  const median = val(s.median)
 
   if (s.std === 0 || (s.cv !== null && Math.abs(s.cv) < 1e-6)) {
     return {
@@ -140,7 +152,7 @@ function centralTendencyNarrative(s: NumericSummary): Narrative {
 
   return {
     headline: `Average ${mean}, median ${median}.`,
-    body: `Values range from ${formatNumber(s.min)} to ${formatNumber(s.max)}.`,
+    body: `Values range from ${val(s.min)} to ${val(s.max)}.`,
     severity: 'info',
   }
 }
@@ -148,10 +160,12 @@ function centralTendencyNarrative(s: NumericSummary): Narrative {
 function variabilityNarrative(s: NumericSummary): Narrative | null {
   if (s.cv === null || !Number.isFinite(s.cv)) return null
 
+  const mean = formatStatValue(s.mean, s.formatHint)
+
   if (s.cv >= CV_HIGH) {
     return {
       headline: `Values vary widely (CV ${s.cv.toFixed(2)}).`,
-      body: `The spread (${formatNumber(s.std)}) is about as big as the average (${formatNumber(s.mean)}). Expect rows to differ a lot from each other; any single "average" you quote will hide that variation.`,
+      body: `The spread (${formatNumber(s.std)}) is about as big as the average (${mean}). Expect rows to differ a lot from each other; any single "average" you quote will hide that variation.`,
       severity: 'note',
     }
   }
@@ -159,7 +173,7 @@ function variabilityNarrative(s: NumericSummary): Narrative | null {
   if (s.cv < CV_LOW && s.std > 0) {
     return {
       headline: `Values stay close to the average (CV ${s.cv.toFixed(2)}).`,
-      body: `Spread (${formatNumber(s.std)}) is small relative to the average (${formatNumber(s.mean)}). Rows look similar to each other, so the average is a good predictor of any single row.`,
+      body: `Spread (${formatNumber(s.std)}) is small relative to the average (${mean}). Rows look similar to each other, so the average is a good predictor of any single row.`,
       severity: 'note',
     }
   }
@@ -196,10 +210,14 @@ function tailNarrative(s: NumericSummary): Narrative | null {
 function inequalityNarrative(s: NumericSummary): Narrative | null {
   if (s.gini < GINI_HIGH) return null
 
+  // ratio is a multiplier ("5.86x"), so it stays formatNumber regardless of
+  // hint. p99 and median get the hint so year columns read sanely if they
+  // ever trip the gini threshold (rare, but worth being correct).
+  const val = (v: number) => formatStatValue(v, s.formatHint)
   const ratio = s.p99 / Math.max(s.median, 1e-9)
   return {
     headline: `A small group at the top drives most of the total.`,
-    body: `Your largest values (top 1% sits at ${formatNumber(s.p99)}) are roughly ${formatNumber(ratio)}x the typical row (${formatNumber(s.median)}). Classic 80/20 pattern: focus there if you want to move the total, and don't be surprised when the average looks misleading.`,
+    body: `Your largest values (top 1% sits at ${val(s.p99)}) are roughly ${formatNumber(ratio)}x the typical row (${val(s.median)}). Classic 80/20 pattern: focus there if you want to move the total, and don't be surprised when the average looks misleading.`,
     severity: 'info',
   }
 }

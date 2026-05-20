@@ -13,9 +13,15 @@
  */
 
 import { Hash, Type, Calendar, ToggleLeft, HelpCircle } from 'lucide-react'
-import type { ColumnSummary } from '@/types/stats'
+import type { ColumnSummary, NumericSummary } from '@/types/stats'
 import { buildNarrativesFor } from '@/lib/narratives/descriptive'
-import { formatCount, formatDate, formatNumber, formatPct } from '@/lib/narratives/format'
+import {
+  formatCount,
+  formatDate,
+  formatNumber,
+  formatPct,
+  formatStatValue,
+} from '@/lib/narratives/format'
 import { DistributionChart } from '@/components/charts/DistributionChart'
 import { StatGrid } from './StatGrid'
 import { NarrativeList } from './NarrativeList'
@@ -86,10 +92,13 @@ function buildStatItems(summary: ColumnSummary): Array<{
   detail?: string
 }> {
   switch (summary.kind) {
-    case 'numeric':
+    case 'numeric': {
+      // Per-column formatter that respects the year-vs-standard hint. Year
+      // columns display 2024 instead of 2.02k.
+      const num = (v: number) => formatStatValue(v, (summary as NumericSummary).formatHint)
       return [
-        { label: 'mean', value: formatNumber(summary.mean) },
-        { label: 'median', value: formatNumber(summary.median) },
+        { label: 'mean', value: num(summary.mean) },
+        { label: 'median', value: num(summary.median) },
         {
           label: 'std',
           value: formatNumber(summary.std),
@@ -100,10 +109,10 @@ function buildStatItems(summary: ColumnSummary): Array<{
           value: formatNumber(summary.mad),
           detail: 'robust σ',
         },
-        { label: 'min', value: formatNumber(summary.min) },
-        { label: 'p25', value: formatNumber(summary.p25) },
-        { label: 'p75', value: formatNumber(summary.p75) },
-        { label: 'max', value: formatNumber(summary.max) },
+        { label: 'min', value: num(summary.min) },
+        { label: 'p25', value: num(summary.p25) },
+        { label: 'p75', value: num(summary.p75) },
+        { label: 'max', value: num(summary.max) },
         {
           label: 'skew',
           value: formatNumber(summary.skew),
@@ -124,6 +133,7 @@ function buildStatItems(summary: ColumnSummary): Array<{
           value: summary.gini.toFixed(2),
         },
       ]
+    }
     case 'categorical': {
       const items = [
         { label: 'unique', value: formatCount(summary.uniqueCount) },

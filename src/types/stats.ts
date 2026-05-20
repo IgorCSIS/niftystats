@@ -92,6 +92,13 @@ export interface NumericSummary extends ColumnSummaryBase {
    * distribution chart.
    */
   outlierValues: number[]
+  /**
+   * Hint for how to format values from this column in the UI. 'year'
+   * means the values are calendar years (display as 2024, not 2.02k).
+   * 'standard' uses the default number formatter (k/M suffixes by magnitude).
+   * Set by the Python engine based on column name and value range.
+   */
+  formatHint: 'year' | 'standard'
 }
 
 export interface CategoricalSummary extends ColumnSummaryBase {
@@ -217,14 +224,15 @@ export interface TopCorrelation {
 }
 
 /**
- * One regression run: predict a single target column from a set of feature
- * columns. We do this per numeric target so the user sees what predicts
- * each business metric.
+ * Linear regression result for a numeric target column.
+ *
+ * Predicts a continuous variable from a set of numeric features via OLS.
+ * `rSquared` and `adjustedRSquared` measure how much of the target's
+ * variation the features account for.
  */
-export interface RegressionAnalysis {
+export interface LinearRegressionAnalysis {
   /** The column being predicted. */
   target: string
-  /** Linear OLS only in v3 phase 1. Logistic regression lands later. */
   kind: 'linear'
   /** R^2: fraction of target variance explained by features. 0 to 1. */
   rSquared: number
@@ -243,6 +251,34 @@ export interface RegressionAnalysis {
    * Why we couldn't run this regression, if applicable. When non-null,
    * `coefficients` is empty and metrics are 0.
    */
+  skippedReason: string | null
+}
+
+/**
+ * Logistic regression result for a boolean target column.
+ *
+ * Predicts the probability of the target being "true" from numeric
+ * features. `auc` measures how well the model ranks true cases higher
+ * than false cases; 0.5 is chance, 1.0 is perfect.
+ *
+ * Each coefficient also has an odds ratio: how much a one-unit increase
+ * in that feature multiplies the odds of "true." Odds ratios are the
+ * natural interpretive scale for logistic regression and what the
+ * narratives translate into "X times more likely" language.
+ */
+export interface LogisticRegressionAnalysis {
+  target: string
+  kind: 'logistic'
+  /** Area under ROC curve. 0.5 = chance, 1.0 = perfect ranking. */
+  auc: number
+  /** Fraction of correct predictions at the 0.5 threshold. */
+  accuracy: number
+  nObservations: number
+  /** True/false counts after dropping rows with NaN. */
+  trueCount: number
+  falseCount: number
+  /** Logistic coefficients sorted by absolute standardized impact. */
+  coefficients: LogisticCoefficient[]
   skippedReason: string | null
 }
 
@@ -265,6 +301,35 @@ export interface CoefficientEstimate {
   isSignificant: boolean
 }
 
+/**
+ * One logistic regression coefficient, with odds-ratio expression.
+ *
+ * `oddsRatio = exp(estimate)`. The reader-friendly interpretation: a one-unit
+ * increase in this feature multiplies the odds of the target being true by
+ * `oddsRatio`. 1.0 = no effect, > 1 = increases odds, < 1 = decreases odds.
+ *
+ * Standardized coefficient lets us rank predictors with different units.
+ */
+export interface LogisticCoefficient {
+  feature: string
+  /** Raw log-odds coefficient. */
+  estimate: number
+  /** exp(estimate). Multiplicative effect on odds per one-unit increase. */
+  oddsRatio: number
+  /** Coefficient on the feature's standardized scale (z-score units). */
+  standardizedEstimate: number
+  standardError: number
+  /** Wald z-statistic. */
+  zStatistic: number
+  pValue: number
+  isSignificant: boolean
+}
+
+/** Either kind of regression. The dashboard's RegressionCard switches on `kind`. */
+export type RegressionAnalysis =
+  | LinearRegressionAnalysis
+  | LogisticRegressionAnalysis
+
 export interface RelationalResult {
   /** Pearson correlations + p-values. Linear relationships. */
   pearson: CorrelationMatrix
@@ -283,14 +348,168 @@ export interface RelationalResult {
   computeMs: number
 }
 
+// =====================================================================
+// Clustering result types (v4 phase 1)
+// =====================================================================
+
+/**
+ * One distinguishing feature of a cluster relative to the overall data.
+ *
+ * `deviationFromMeanStd` is the cluster centroid's value for this column,
+ * expressed as standard-deviation units away from the dataset's overall
+ * mean. Sign tells direction (positive = above mean, negative = below).
+ * Magnitude tells strength. ±1 SD or more is genuinely distinctive.
+ */
+export interface DistinguishingFeature {
+  feature: string
+  /** Centroid value in original feature units (e.g., 4250 for body_mass_g). */
+  centerValue: number
+  /** How far the centroid sits from the overall mean, in standard deviations. */
+  deviationFromMeanStd: number
+}
+
+/**
+ * One cluster found by k-means. The narrative layer uses these to write
+ * "Group A: large customers with long flippers" style copy.
+ */
+export interface ClusterSummary {
+  /** 0-indexed cluster ID. Used to color the scatter and key the card. */
+  id: number
+  /** Display label, default "Group A", "Group B" etc. */
+  label: string
+  /** How many rows landed in this cluster. */
+  size: number
+  /** size / totalRows, 0 to 1. */
+  sizePct: number
+  /**
+   * Top features (by |deviation|) that distinguish this cluster from the
+   * overall mean. The first 1-3 entries become the cluster's narrative.
+   */
+  distinguishingFeatures: DistinguishingFeature[]
+}
+
+/**
+ * A single point in the 2D PCA-projected scatter plot. We bundle the
+ * original feature values for hover tooltips so users see meaningful
+ * numbers instead of abstract PCA coordinates.
+ */
+export interface ProjectionPoint {
+  /** PC1 coordinate. */
+  x: number
+  /** PC2 coordinate. */
+  y: number
+  /** Which cluster this point belongs to. Matches ClusterSummary.id. */
+  cluster: number
+}
+
+/**
+ * Top-level clustering result. Null when clustering was skipped (too few
+ * rows, too few numeric columns, sklearn failure).
+ */
+export interface ClusteringResult {
+  /** Number of clusters chosen by the auto-k pass. */
+  k: number
+  /** Silhouette score for the chosen k. 0.5+ is strong, < 0.2 is weak. */
+  silhouetteScore: number
+  /** Scores for each k that was evaluated. Used in the narrative. */
+  kCandidates: Array<{ k: number; score: number }>
+  /** Numeric column names that fed into the clustering. */
+  featureColumns: string[]
+  /** One entry per cluster, in id order. */
+  clusters: ClusterSummary[]
+  /** Variance explained by each of the top 2 PCA components, 0..1. */
+  pcaVarianceExplained: [number, number]
+  /** One scatter point per row, in source order. Capped at SAMPLE_LIMIT. */
+  projection: ProjectionPoint[]
+  /** ms taken on the Python side. */
+  computeMs: number
+}
+
+/**
+ * When clustering was skipped, we still return a result with the reason
+ * so the UI can render a helpful "not enough data" message instead of an
+ * empty section.
+ */
+export interface ClusteringSkipped {
+  skippedReason: string
+}
+
+export type ClusteringOutcome = ClusteringResult | ClusteringSkipped
+
+// =====================================================================
+// Time-series result types (v4 phase 3)
+// =====================================================================
+
+/**
+ * One analyzed time-series: a single numeric column tracked over a
+ * single datetime column.
+ *
+ * The engine fits a linear trend, reports its slope and R² (how well the
+ * trend explains the data), then projects forward with a 95% prediction
+ * interval computed from residual standard error. Light approach by
+ * design, no statsmodels dependency: trend + forecast covers 90% of the
+ * "what's the direction and where is this going" business question
+ * without dragging in a 10MB package.
+ */
+export interface TimeSeriesAnalysis {
+  /** Source datetime column name. */
+  datetimeColumn: string
+  /** Source numeric column being tracked. */
+  valueColumn: string
+  /** Number of (datetime, value) pairs after dropping missing. */
+  nObservations: number
+
+  /** ISO date strings of the historical observations, in chronological order. */
+  historicalDates: string[]
+  historicalValues: number[]
+
+  /** Linear trend: value = slope * day_index + intercept. */
+  trendSlope: number
+  trendIntercept: number
+  /** R² of the linear fit. 0..1. High = clean trend; low = noisy. */
+  trendRSquared: number
+  /** Residual standard error: typical distance of an observation from the trend line. */
+  residualStd: number
+
+  /** Inferred period spacing between consecutive observations, in days. */
+  medianGapDays: number
+  /** Human-readable cadence label: 'daily', 'weekly', 'monthly', 'irregular'. */
+  cadenceLabel: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'irregular'
+
+  /** Forecast horizon dates (ISO strings). */
+  forecastDates: string[]
+  /** Forecast point estimates. */
+  forecastValues: number[]
+  /** Lower / upper bounds of the 95% prediction interval. */
+  forecastLower95: number[]
+  forecastUpper95: number[]
+}
+
+/**
+ * Skipped time-series outcome. Mirrors ClusteringSkipped pattern.
+ */
+export interface TimeSeriesSkipped {
+  skippedReason: string
+}
+
+export interface TimeSeriesResult {
+  /** One entry per analyzable (datetime, numeric) pair. */
+  serieses: TimeSeriesAnalysis[]
+  /** When no series could be analyzed (no datetime column, too few points). */
+  skippedReason: string | null
+  computeMs: number
+}
+
 /**
  * Combined analysis result. The Pyodide client returns this on every
- * Analyze run. Each sub-result is optional so future analyses (advanced,
- * etc.) can be added without breaking existing consumers.
+ * Analyze run. Each sub-result is optional so future analyses can be
+ * added without breaking existing consumers.
  */
 export interface AnalysisResult {
   descriptive: DescriptiveResult
   relational: RelationalResult | null
+  clustering: ClusteringOutcome | null
+  timeSeries: TimeSeriesResult | null
   generatedAt: string
   totalMs: number
 }

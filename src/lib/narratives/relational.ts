@@ -5,17 +5,18 @@
  * headlines, plain-English bodies that tell a small business owner what
  * the relationship MEANS for their decisions.
  *
- * Two flavors of narratives live here:
- *   - Per-pair commentary on the top correlations (positive, negative,
- *     non-linear-hint). Used in the highlight strip at the top of the
- *     relational section.
- *   - Per-target regression commentary. One narrative bundle per
- *     RegressionAnalysis card.
+ * Three flavors live here:
+ *   - Per-pair commentary on top correlations.
+ *   - Per-target LINEAR regression commentary.
+ *   - Per-target LOGISTIC regression commentary (boolean targets, with
+ *     odds-ratio framing).
  */
 
 import type {
   CoefficientEstimate,
-  RegressionAnalysis,
+  LinearRegressionAnalysis,
+  LogisticCoefficient,
+  LogisticRegressionAnalysis,
   TopCorrelation,
 } from '@/types/stats'
 import type { Narrative } from './descriptive'
@@ -23,31 +24,38 @@ import { formatNumber, formatPct } from './format'
 
 // ---------- Thresholds ----------
 
-/** Bands for descriptive language around correlation strength.
- *  PRACTICALLY_IDENTICAL gets a dedicated narrative variant because three
- *  separate "very strong" entries that are all r=1.00 read like a copy/paste
- *  mistake; the user wants to know "these are the same thing." */
 const CORR_PRACTICALLY_IDENTICAL = 0.95
 const CORR_VERY_STRONG = 0.85
 const CORR_STRONG = 0.7
 const CORR_MODERATE = 0.4
 const CORR_WEAK = 0.2
 
-/** Significance threshold for the "statistically reliable" language. */
 const SIG_ALPHA = 0.05
 
-/** R^2 bands for regression narratives. */
 const R2_EXCELLENT = 0.7
 const R2_GOOD = 0.5
 const R2_MODEST = 0.2
 
+// AUC bands for logistic regression. 0.5 is chance; 0.7+ is useful;
+// 0.85+ is genuinely strong predictive power.
+const AUC_STRONG = 0.85
+const AUC_DECENT = 0.7
+const AUC_WEAK = 0.6
+
+// Odds-ratio magnitude bands for "noticeable" feature impact narratives.
+// An OR of 1.5 means each unit multiplies odds by 1.5x; 2.0 doubles them.
+const OR_NOTABLE = 1.3
+const OR_STRONG = 2.0
+
+// Sample-size thresholds for the "treat as exploratory" warning. Logistic
+// regression converges with as few as 20 rows but the p-values, AUC, and
+// odds ratios are noisy at that scale. We fire the warning so a user
+// running on a sample-sized demo dataset doesn't over-interpret the result.
+const SMALL_SAMPLE_N = 50
+const SMALL_MINORITY = 15
+
 // ---------- Correlation narratives ----------
 
-/**
- * One narrative for a single TopCorrelation entry. Used in the highlight
- * strip beneath the heatmap. The headline carries the precise r and p,
- * the body translates into "what this means" prose.
- */
 export function buildCorrelationNarrative(corr: TopCorrelation): Narrative {
   const r = Math.max(Math.abs(corr.pearson), Math.abs(corr.spearman))
   const direction = corr.pearson >= 0 ? 'together' : 'in opposite directions'
@@ -94,14 +102,11 @@ export function buildCorrelationNarrative(corr: TopCorrelation): Narrative {
   }
 }
 
-// ---------- Regression narratives ----------
+// ---------- Linear regression narratives ----------
 
-/**
- * Two-to-four narrative bullets for a single regression target. The
- * headline captures the headline R^2, follow-up bullets call out the most
- * influential predictors, weak relationships, and multicollinearity.
- */
-export function buildRegressionNarratives(reg: RegressionAnalysis): Narrative[] {
+export function buildLinearRegressionNarratives(
+  reg: LinearRegressionAnalysis,
+): Narrative[] {
   if (reg.skippedReason) {
     return [
       {
@@ -113,16 +118,13 @@ export function buildRegressionNarratives(reg: RegressionAnalysis): Narrative[] 
   }
 
   const out: Narrative[] = []
-
-  out.push(buildRSquaredNarrative(reg))
+  out.push(buildLinearR2Narrative(reg))
 
   const topPredictor = reg.coefficients[0]
   if (topPredictor) {
-    out.push(buildTopPredictorNarrative(reg.target, topPredictor))
+    out.push(buildLinearTopPredictorNarrative(reg.target, topPredictor))
   }
 
-  // Mention the runner-up if it's also significant. Helps the user
-  // understand which features deserve attention beyond the top one.
   const runnerUp = reg.coefficients[1]
   if (
     runnerUp &&
@@ -131,7 +133,7 @@ export function buildRegressionNarratives(reg: RegressionAnalysis): Narrative[] 
   ) {
     out.push({
       headline: `Also notable: \`${runnerUp.feature}\`.`,
-      body: `${describeCoefficientImpact(reg.target, runnerUp)}`,
+      body: describeLinearCoefImpact(reg.target, runnerUp),
       severity: 'info',
     })
   }
@@ -148,7 +150,7 @@ export function buildRegressionNarratives(reg: RegressionAnalysis): Narrative[] 
   return out
 }
 
-function buildRSquaredNarrative(reg: RegressionAnalysis): Narrative {
+function buildLinearR2Narrative(reg: LinearRegressionAnalysis): Narrative {
   const pct = formatPct(reg.rSquared)
   const adjPct = formatPct(reg.adjustedRSquared)
 
@@ -181,7 +183,7 @@ function buildRSquaredNarrative(reg: RegressionAnalysis): Narrative {
   }
 }
 
-function buildTopPredictorNarrative(
+function buildLinearTopPredictorNarrative(
   target: string,
   predictor: CoefficientEstimate,
 ): Narrative {
@@ -189,29 +191,184 @@ function buildTopPredictorNarrative(
     ? `statistically reliable (p ${formatPValue(predictor.pValue)})`
     : `not statistically reliable on its own (p ${formatPValue(predictor.pValue)})`
 
-  // "Strongest association" instead of "top predictor" because linear
-  // regression measures correlation, not causation. The headline framing
-  // matters: clicks predicting impressions is a statistical artifact (clicks
-  // come from impressions, not the other way around), and the prose should
-  // not imply otherwise.
   return {
     headline: `Strongest association with ${target}: \`${predictor.feature}\`.`,
-    body: `${describeCoefficientImpact(target, predictor)} The relationship is ${significance}.`,
+    body: `${describeLinearCoefImpact(target, predictor)} The relationship is ${significance}.`,
     severity: predictor.isSignificant ? 'info' : 'note',
   }
 }
 
-/**
- * Plain-English description of one coefficient. Translates "for every
- * one-unit increase in feature, target changes by X" into business terms.
- */
-function describeCoefficientImpact(
+function describeLinearCoefImpact(
   target: string,
   coef: CoefficientEstimate,
 ): string {
   const moreOrLess = coef.estimate > 0 ? 'more' : 'less'
   const magnitude = formatNumber(Math.abs(coef.estimate))
   return `On average, each additional unit of \`${coef.feature}\` is associated with about ${magnitude} ${moreOrLess} ${target}, holding the other predictors constant.`
+}
+
+// ---------- Logistic regression narratives ----------
+
+export function buildLogisticRegressionNarratives(
+  reg: LogisticRegressionAnalysis,
+): Narrative[] {
+  if (reg.skippedReason) {
+    return [
+      {
+        headline: `Couldn't model ${reg.target}.`,
+        body: reg.skippedReason,
+        severity: 'warning',
+      },
+    ]
+  }
+
+  const out: Narrative[] = []
+  out.push(buildAucNarrative(reg))
+
+  const topPredictor = reg.coefficients[0]
+  if (topPredictor) {
+    out.push(buildLogisticTopPredictorNarrative(reg.target, topPredictor))
+  }
+
+  // Runner-up if also significant and large enough magnitude.
+  const runnerUp = reg.coefficients[1]
+  if (
+    runnerUp &&
+    runnerUp.isSignificant &&
+    Math.abs(runnerUp.standardizedEstimate) > 0.15
+  ) {
+    out.push({
+      headline: `Also notable: \`${runnerUp.feature}\`.`,
+      body: describeLogisticCoefImpact(reg.target, runnerUp),
+      severity: 'info',
+    })
+  }
+
+  // Class-imbalance note when one outcome is very rare.
+  const truePct = reg.nObservations ? reg.trueCount / reg.nObservations : 0
+  if (truePct <= 0.2 || truePct >= 0.8) {
+    const minority = truePct < 0.5 ? 'true' : 'false'
+    const minorityPct = formatPct(truePct < 0.5 ? truePct : 1 - truePct)
+    out.push({
+      headline: `Imbalanced outcome.`,
+      body: `Only ${minorityPct} of rows are "${minority}". Accuracy alone is misleading on data like this, the model could be ${formatPct(1 - (truePct < 0.5 ? truePct : 1 - truePct))} accurate just by always predicting the common answer. AUC and the predictor table tell the real story.`,
+      severity: 'warning',
+    })
+  }
+
+  // Small-sample warning. Logistic on 20-30 rows is technically valid but
+  // p-values and AUC bounce around with each added observation. Surfacing
+  // this protects users from over-confident takeaways on tiny demo data.
+  const minorityCount = Math.min(reg.trueCount, reg.falseCount)
+  if (reg.nObservations < SMALL_SAMPLE_N || minorityCount < SMALL_MINORITY) {
+    out.push({
+      headline: `Small sample, treat as exploratory.`,
+      body: `Only ${reg.nObservations} rows with ${minorityCount} cases of the smaller class. Results are directionally interesting but the specific p-values and odds ratios can move noticeably if you add or remove a few rows. Validate the headline finding on more data before acting on it.`,
+      severity: 'note',
+    })
+  }
+
+  return out
+}
+
+function buildAucNarrative(reg: LogisticRegressionAnalysis): Narrative {
+  const auc = reg.auc
+  const aucText = auc.toFixed(2)
+
+  // Complete-separation check. When AUC is essentially perfect AND either
+  // the sample is small or no individual coefficient is statistically
+  // reliable, the model has memorized the training data rather than found
+  // a generalizable pattern. Logistic regression coefficients blow up to
+  // infinity under perfect separation, which is what produces the huge
+  // standard errors that wipe out p-values.
+  const minorityCount = Math.min(reg.trueCount, reg.falseCount)
+  const allPValuesUnreliable = reg.coefficients.every((c) => c.pValue > 0.5)
+  if (auc >= 0.98 && (reg.nObservations < 50 || allPValuesUnreliable || minorityCount < 10)) {
+    return {
+      headline: `Suspiciously perfect fit (AUC ${aucText}).`,
+      body: `An AUC this high on ${reg.nObservations} rows with ${minorityCount} cases of the smaller class usually means the model has memorized the training data, not found a real pattern. The huge standard errors (every coefficient shows p above 0.5) are the tell: with this little data and this few minority cases, the math allows perfect separation but the result won't hold up on new rows. Treat the predictor table as a directional hint about which columns matter, nothing more.`,
+      severity: 'warning',
+    }
+  }
+
+  if (auc >= AUC_STRONG) {
+    return {
+      headline: `Strong predictive signal for ${reg.target} (AUC ${aucText}).`,
+      body: `The model correctly ranks a "true" row above a "false" row about ${formatPct(auc)} of the time when given a random pair. That's genuinely useful prediction power.`,
+      severity: 'info',
+    }
+  }
+  if (auc >= AUC_DECENT) {
+    return {
+      headline: `Decent predictive signal (AUC ${aucText}).`,
+      body: `The model can distinguish "true" from "false" better than guessing. Directionally useful, not precise enough for high-stakes individual predictions.`,
+      severity: 'info',
+    }
+  }
+  if (auc >= AUC_WEAK) {
+    return {
+      headline: `Weak predictive signal (AUC ${aucText}).`,
+      body: `The model barely beats guessing the majority class. The features in this table don't carry strong information about whether ${reg.target} is true or false. Either the real drivers are elsewhere or the relationship isn't linear.`,
+      severity: 'note',
+    }
+  }
+
+  return {
+    headline: `No useful prediction (AUC ${aucText}).`,
+    body: `The model performs no better than chance. ${reg.target} can't be predicted from these features. Worth investigating what features WOULD predict it.`,
+    severity: 'warning',
+  }
+}
+
+function buildLogisticTopPredictorNarrative(
+  target: string,
+  predictor: LogisticCoefficient,
+): Narrative {
+  const significance = predictor.isSignificant
+    ? `statistically reliable (p ${formatPValue(predictor.pValue)})`
+    : `not statistically reliable on its own (p ${formatPValue(predictor.pValue)})`
+
+  return {
+    headline: `Strongest association with ${target}: \`${predictor.feature}\`.`,
+    body: `${describeLogisticCoefImpact(target, predictor)} The relationship is ${significance}.`,
+    severity: predictor.isSignificant ? 'info' : 'note',
+  }
+}
+
+/**
+ * Translate an odds ratio into business-friendly "X times more/less likely"
+ * language. We avoid the term "odds ratio" itself in the body since it's
+ * an unfamiliar concept; the precise value sits in the predictor table for
+ * anyone who wants it.
+ */
+function describeLogisticCoefImpact(
+  target: string,
+  coef: LogisticCoefficient,
+): string {
+  const or = coef.oddsRatio
+  if (!Number.isFinite(or) || or <= 0) {
+    return `Each additional unit of \`${coef.feature}\` shifts the odds of ${target}=true, but the effect estimate is unstable for this data.`
+  }
+
+  if (or >= OR_STRONG) {
+    return `Each additional unit of \`${coef.feature}\` makes ${target}=true about ${formatNumber(or)}x more likely (compounding for each extra unit).`
+  }
+  if (or >= OR_NOTABLE) {
+    const pctIncrease = formatPct(or - 1)
+    return `Each additional unit of \`${coef.feature}\` raises the odds of ${target}=true by about ${pctIncrease}, holding the other predictors constant.`
+  }
+  if (or > 1) {
+    return `Each additional unit of \`${coef.feature}\` nudges the odds of ${target}=true slightly upward (odds ratio ${or.toFixed(2)}).`
+  }
+  if (or >= 1 / OR_NOTABLE) {
+    return `Each additional unit of \`${coef.feature}\` nudges the odds of ${target}=true slightly downward (odds ratio ${or.toFixed(2)}).`
+  }
+  if (or >= 1 / OR_STRONG) {
+    const inverseOr = 1 / or
+    return `Each additional unit of \`${coef.feature}\` lowers the odds of ${target}=true. A one-unit increase makes "true" about ${formatNumber(inverseOr)}x less likely.`
+  }
+  const inverseOr = 1 / or
+  return `Each additional unit of \`${coef.feature}\` strongly lowers the odds of ${target}=true. A one-unit increase makes "true" about ${formatNumber(inverseOr)}x less likely.`
 }
 
 function formatPValue(p: number): string {

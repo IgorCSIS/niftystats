@@ -37,6 +37,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 # Cap on how many highlighted top correlations we ship per category.
 TOP_CORRELATION_LIMIT = 3
@@ -93,6 +95,7 @@ def run_relational(rows_json: str, columns_meta_json: str) -> str:
 
     df = pd.DataFrame(rows)
     numeric_meta = [m for m in columns_meta if m["type"] == "numeric"]
+    boolean_meta = [m for m in columns_meta if m["type"] == "boolean"]
 
     if len(numeric_meta) < 2:
         # Fewer than two numeric columns means no pairwise relationships
@@ -116,12 +119,28 @@ def run_relational(rows_json: str, columns_meta_json: str) -> str:
     )
 
     regressions = []
+
+    # Linear regression: every numeric column as a target.
     for target in coerced.columns:
         try:
             result = _run_linear_regression(coerced, target)
         except Exception as exc:
-            result = _empty_regression(
+            result = _empty_linear_regression(
                 target=target,
+                skipped_reason=f"{type(exc).__name__}: {exc}",
+            )
+        regressions.append(result)
+
+    # Logistic regression: every boolean column as a target. We pull the
+    # boolean values from the original DataFrame (not the coerced numeric
+    # one, since boolean columns aren't in it).
+    for meta in boolean_meta:
+        target_name = meta["name"]
+        try:
+            result = _run_logistic_regression(df, coerced, target_name)
+        except Exception as exc:
+            result = _empty_logistic_regression(
+                target=target_name,
                 skipped_reason=f"{type(exc).__name__}: {exc}",
             )
         regressions.append(result)
@@ -473,8 +492,8 @@ def _run_linear_regression(df: pd.DataFrame, target: str) -> dict[str, Any]:
     }
 
 
-def _empty_regression(target: str, skipped_reason: str) -> dict[str, Any]:
-    """A placeholder regression result used when we can't run the math."""
+def _empty_linear_regression(target: str, skipped_reason: str) -> dict[str, Any]:
+    """A placeholder linear regression result when we can't run the math."""
     return {
         "target": target,
         "kind": "linear",
@@ -485,6 +504,206 @@ def _empty_regression(target: str, skipped_reason: str) -> dict[str, Any]:
         "multicollinearFeatures": [],
         "skippedReason": skipped_reason,
     }
+
+
+def _empty_logistic_regression(target: str, skipped_reason: str) -> dict[str, Any]:
+    """A placeholder logistic regression result when we can't run the math."""
+    return {
+        "target": target,
+        "kind": "logistic",
+        "auc": 0.5,
+        "accuracy": 0.0,
+        "nObservations": 0,
+        "trueCount": 0,
+        "falseCount": 0,
+        "coefficients": [],
+        "skippedReason": skipped_reason,
+    }
+
+
+# Minimum sample size and minority-class count for logistic regression to be
+# trustworthy. Below either threshold, sklearn might fit but the p-values
+# and AUC are too noisy to mean anything.
+#
+# The thresholds are deliberately permissive (20 / 5) so the engine works on
+# sample-sized demo datasets. The narrative layer adds a "small sample,
+# treat as exploratory" warning whenever n < SAMPLE_RELIABILITY_N or
+# minority < MINORITY_RELIABILITY so users don't over-interpret tiny
+# datasets even though the math runs.
+MIN_LOGISTIC_N = 20
+MIN_MINORITY_CLASS = 5
+
+
+def _run_logistic_regression(
+    df_raw: pd.DataFrame,
+    numeric_df: pd.DataFrame,
+    target: str,
+) -> dict[str, Any]:
+    """
+    Logistic regression of a boolean target on every numeric feature.
+
+    We use sklearn's LogisticRegression (no regularization to keep the
+    coefficients interpretable, default L-BFGS solver). p-values come
+    from the Wald test: compute the standard errors from the inverse
+    Fisher information matrix (X' diag(p*(1-p)) X), then z = coef / SE,
+    p = 2 * (1 - Phi(|z|)).
+
+    Why no regularization (C=1e9): default sklearn applies L2 with C=1,
+    which shrinks coefficients and complicates SE/p-value interpretation.
+    For a small business-stats use case where the user wants honest
+    "which feature predicts true" answers, unregularized maximum
+    likelihood is the right call.
+    """
+    if target not in df_raw.columns:
+        return _empty_logistic_regression(target, f"Column '{target}' not found.")
+
+    # Coerce target to 0/1.
+    target_raw = df_raw[target].astype(str).str.strip().str.lower()
+    true_set = {"true", "yes", "y", "1", "t"}
+    false_set = {"false", "no", "n", "0", "f"}
+    target_binary = pd.Series(
+        np.where(
+            target_raw.isin(true_set),
+            1,
+            np.where(target_raw.isin(false_set), 0, np.nan),
+        ),
+        index=df_raw.index,
+    )
+
+    # Features are all the coerced numeric columns. Listwise deletion on
+    # rows missing either target or any feature.
+    full_df = numeric_df.copy()
+    full_df["__target__"] = target_binary
+    sub = full_df.dropna()
+    n = len(sub)
+    if n < MIN_LOGISTIC_N:
+        return _empty_logistic_regression(
+            target,
+            f"Need at least {MIN_LOGISTIC_N} rows with valid data; only {n} available "
+            f"after dropping rows with missing target or feature values.",
+        )
+
+    y = sub["__target__"].values.astype(int)
+    feature_names = [c for c in numeric_df.columns]
+    X_raw = sub[feature_names].values
+
+    true_count = int(y.sum())
+    false_count = int(n - true_count)
+    minority_count = min(true_count, false_count)
+    if minority_count < MIN_MINORITY_CLASS:
+        return _empty_logistic_regression(
+            target,
+            f"The smaller class has only {minority_count} cases. Logistic regression "
+            f"needs at least {MIN_MINORITY_CLASS} of each outcome to give reliable results.",
+        )
+
+    # Skip constant features. Same handling as linear regression.
+    feature_variances = X_raw.var(axis=0, ddof=1)
+    nonconstant_mask = feature_variances > 0
+    if not nonconstant_mask.any():
+        return _empty_logistic_regression(
+            target, "All feature columns are constant; no variation to model."
+        )
+    active_features = [
+        f for f, keep in zip(feature_names, nonconstant_mask) if keep
+    ]
+    X_active = X_raw[:, nonconstant_mask]
+
+    # Per-feature mean and std for the standardized coefficient computation.
+    feature_means = X_active.mean(axis=0)
+    feature_stds = X_active.std(axis=0, ddof=1)
+    safe_stds = np.where(feature_stds == 0, 1.0, feature_stds)
+
+    # Fit with effectively no regularization (large C).
+    model = LogisticRegression(
+        penalty=None,
+        solver="lbfgs",
+        max_iter=1000,
+    )
+    model.fit(X_active, y)
+
+    coefs = model.coef_[0]
+    intercept = model.intercept_[0]
+
+    # Build design matrix with intercept column for Wald SE computation.
+    X_design = np.column_stack([np.ones(n), X_active])
+    beta_full = np.concatenate([[intercept], coefs])
+    # Predicted probabilities for the Hessian (Fisher information matrix).
+    linear = X_design @ beta_full
+    probs = 1.0 / (1.0 + np.exp(-linear))
+    # Clip to avoid 0 * inf in the weight diagonal.
+    probs = np.clip(probs, 1e-9, 1.0 - 1e-9)
+    weights = probs * (1.0 - probs)
+
+    # Fisher information: X' diag(w) X. Inverse gives covariance of betas.
+    try:
+        fisher = X_design.T @ (weights[:, None] * X_design)
+        cov = np.linalg.inv(fisher)
+    except np.linalg.LinAlgError:
+        return _empty_logistic_regression(
+            target,
+            "Feature columns are too collinear to compute reliable standard errors.",
+        )
+
+    se_full = np.sqrt(np.maximum(np.diag(cov), 0))
+    # Drop intercept SE (first element); we only report coefficient stats.
+    se_coefs = se_full[1:]
+    z_stats = np.divide(
+        coefs,
+        se_coefs,
+        out=np.zeros_like(coefs),
+        where=se_coefs > 0,
+    )
+    p_values = 2.0 * (1.0 - scipy_stats.norm.cdf(np.abs(z_stats)))
+
+    # Standardized coefficients: beta_std_j = beta_j * std(x_j). For logistic
+    # this gives "change in log-odds per 1-SD increase in feature."
+    standardized = coefs * feature_stds
+
+    # Predictions for AUC and accuracy.
+    pred_proba = model.predict_proba(X_active)[:, 1]
+    predictions = (pred_proba >= 0.5).astype(int)
+    try:
+        auc = float(roc_auc_score(y, pred_proba))
+    except Exception:
+        auc = 0.5
+    accuracy = float(accuracy_score(y, predictions))
+
+    # Build coefficient records.
+    records = []
+    for i, feat in enumerate(active_features):
+        records.append(
+            {
+                "feature": feat,
+                "estimate": float(coefs[i]),
+                "oddsRatio": float(np.exp(coefs[i])),
+                "standardizedEstimate": float(standardized[i]),
+                "standardError": float(se_coefs[i]),
+                "zStatistic": float(z_stats[i]),
+                "pValue": float(p_values[i]),
+                "isSignificant": bool(p_values[i] < SIGNIFICANCE_ALPHA),
+            }
+        )
+
+    # Sort by absolute standardized impact, most influential first.
+    records.sort(key=lambda r: -abs(r["standardizedEstimate"]))
+
+    return {
+        "target": target,
+        "kind": "logistic",
+        "auc": auc,
+        "accuracy": accuracy,
+        "nObservations": int(n),
+        "trueCount": true_count,
+        "falseCount": false_count,
+        "coefficients": records,
+        "skippedReason": None,
+    }
+
+
+# Keep _empty_regression as a backward-compat alias in case anything still
+# imports it (used to exist before the linear/logistic split).
+_empty_regression = _empty_linear_regression
 
 
 def _empty_result(compute_ms: int) -> dict[str, Any]:

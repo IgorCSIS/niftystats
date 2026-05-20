@@ -44,18 +44,23 @@ export function DropZone({ onParsed }: DropZoneProps) {
    */
   const handleFile = useCallback(
     async (file: File) => {
-      // Bare minimum sanity check before invoking the parser. We accept any
-      // file whose name ends in .csv or .txt, or whose MIME type contains
-      // 'csv' (some browsers report 'application/vnd.ms-excel' for .csv).
-      const looksLikeCsv =
-        file.name.toLowerCase().endsWith('.csv') ||
-        file.name.toLowerCase().endsWith('.txt') ||
-        file.type.toLowerCase().includes('csv')
+      // Sanity check before invoking the parser. We accept CSV (.csv, .txt)
+      // and Excel (.xlsx, .xls) files. The MIME-type check is a fallback
+      // for browsers that don't surface the extension cleanly.
+      const lower = file.name.toLowerCase()
+      const looksLikeTable =
+        lower.endsWith('.csv') ||
+        lower.endsWith('.txt') ||
+        lower.endsWith('.xlsx') ||
+        lower.endsWith('.xls') ||
+        file.type.toLowerCase().includes('csv') ||
+        file.type.toLowerCase().includes('spreadsheet') ||
+        file.type.toLowerCase().includes('excel')
 
-      if (!looksLikeCsv) {
+      if (!looksLikeTable) {
         setState({
           kind: 'error',
-          message: `Couldn't recognize "${file.name}" as a CSV. Make sure the file ends in .csv.`,
+          message: `Couldn't recognize "${file.name}". Drop a CSV or Excel file (.csv, .xlsx, .xls).`,
         })
         return
       }
@@ -132,7 +137,7 @@ export function DropZone({ onParsed }: DropZoneProps) {
       <input
         id="niftystats-csv-input"
         type="file"
-        accept=".csv,.txt,text/csv"
+        accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
         className="absolute inset-0 cursor-pointer opacity-0"
         onChange={onFileChange}
         disabled={state.kind === 'parsing'}
@@ -158,11 +163,11 @@ function ZoneContent({ state }: { state: ZoneState }) {
             aria-hidden
           />
           <p className="text-sm text-slate-300">
-            <span className="font-medium text-slate-100">Drop a CSV</span> here, or click
-            to browse
+            <span className="font-medium text-slate-100">Drop a CSV or Excel file</span>{' '}
+            here, or click to browse
           </p>
           <p className="mt-2 max-w-sm text-xs text-slate-500">
-            Up to ~100k rows. Parsed locally, no upload happens.
+            .csv, .xlsx, .xls supported. Up to ~100k rows. Parsed locally, no upload happens.
           </p>
         </>
       )

@@ -30,6 +30,23 @@ export function formatNumber(value: number | null | undefined): string {
   return value.toExponential(2)
 }
 
+/**
+ * Format a numeric value with a hint about what KIND of number it is. Year
+ * values get displayed as integers (2024) rather than the k-suffix that
+ * formatNumber would produce (2.02k). Anything else falls through to the
+ * default formatNumber.
+ */
+export function formatStatValue(
+  value: number | null | undefined,
+  hint?: 'year' | 'standard',
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  if (hint === 'year') {
+    return Math.round(value).toString()
+  }
+  return formatNumber(value)
+}
+
 /** Format a fraction (0..1) as a percentage with 0 or 1 decimals. */
 export function formatPct(fraction: number | null | undefined): string {
   if (fraction === null || fraction === undefined || Number.isNaN(fraction))

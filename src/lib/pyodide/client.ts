@@ -31,6 +31,8 @@ import type { AnalysisResult, ColumnType } from '@/types/stats'
 // run via globals.set + runPython.
 import descriptiveScript from '@/python/descriptive.py?raw'
 import relationalScript from '@/python/relational.py?raw'
+import clusteringScript from '@/python/clustering.py?raw'
+import timeseriesScript from '@/python/timeseries.py?raw'
 
 /**
  * Pyodide CDN index URL. Pin to a specific version. The version here MUST
@@ -118,20 +120,31 @@ class EngineRuntime {
       kind: 'loading',
       step: 'Loading scipy',
       detail:
-        "Statistical tests and robust estimators. Largest package, hang tight, this is the last big download.",
+        "Statistical tests and robust estimators. Bigger package, hang tight.",
     })
     await this.pyodide.loadPackage(['scipy'])
+
+    this.update({
+      kind: 'loading',
+      step: 'Loading scikit-learn',
+      detail:
+        "Machine-learning toolkit for the clustering pass. Last big download, then we're ready.",
+    })
+    await this.pyodide.loadPackage(['scikit-learn'])
 
     this.update({
       kind: 'loading',
       step: 'Warming up the engine',
       detail: 'Compiling the NiftyStats analysis modules. Almost done.',
     })
-    // Run both modules. Each one registers its top-level entry function
-    // (`run_descriptive` and `run_relational`) in the Python global
-    // namespace, which subsequent analyze() calls invoke directly.
+    // Run all three modules. Each registers its top-level entry function
+    // (`run_descriptive`, `run_relational`, `run_clustering`) in the
+    // Python global namespace; subsequent analyze() calls invoke them
+    // directly via globals.set + runPython.
     this.pyodide.runPython(descriptiveScript)
     this.pyodide.runPython(relationalScript)
+    this.pyodide.runPython(clusteringScript)
+    this.pyodide.runPython(timeseriesScript)
     this.scriptsLoaded = true
 
     this.update({ kind: 'ready' })
@@ -187,10 +200,30 @@ class EngineRuntime {
       const relationalJson = py.globals.get('result_json') as string
       const relational = JSON.parse(relationalJson)
 
+      this.update({
+        kind: 'computing',
+        detail: 'Finding natural groupings via k-means clustering.',
+      })
+
+      py.runPython('result_json = run_clustering(rows_json, columns_meta_json)')
+      const clusteringJson = py.globals.get('result_json') as string
+      const clustering = JSON.parse(clusteringJson)
+
+      this.update({
+        kind: 'computing',
+        detail: 'Tracking values over time and projecting forward.',
+      })
+
+      py.runPython('result_json = run_timeseries(rows_json, columns_meta_json)')
+      const timeseriesJson = py.globals.get('result_json') as string
+      const timeSeries = JSON.parse(timeseriesJson)
+
       const totalMs = Math.round(performance.now() - startedAt)
       const combined: AnalysisResult = {
         descriptive,
         relational,
+        clustering,
+        timeSeries,
         generatedAt: descriptive.generatedAt,
         totalMs,
       }

@@ -154,6 +154,33 @@ def _summarize_column(
     )
 
 
+def _looks_like_year_column(name: str, series: pd.Series) -> bool:
+    """
+    Heuristic: a column is "year-like" if its name suggests so and its
+    values fit the range of plausible calendar years. Saves the UI from
+    formatting "2024" as "2.02k".
+    """
+    name_lower = name.lower()
+    name_hits = any(
+        token in name_lower
+        for token in ("year", "yr", "fiscal_year", "fy")
+    )
+    if not name_hits:
+        return False
+    if series.empty:
+        return False
+    # All integer values within a typical calendar-year window.
+    try:
+        as_int = series.dropna().astype(float)
+    except Exception:
+        return False
+    if as_int.empty:
+        return False
+    if not (as_int == as_int.astype(int)).all():
+        return False
+    return bool((as_int.min() >= 1800) and (as_int.max() <= 2200))
+
+
 def _summarize_numeric(
     name: str, raw: pd.Series, total_rows: int, missing: int
 ) -> dict[str, Any]:
@@ -216,6 +243,10 @@ def _summarize_numeric(
     hist_bins, hist_counts = _compute_histogram(series)
     outlier_values = _collect_outlier_values(series, median, mad)
 
+    # Format hint: year-like columns get a special label so the UI
+    # displays "2024" rather than "2.02k".
+    format_hint = "year" if _looks_like_year_column(name, series) else "standard"
+
     return {
         "kind": "numeric",
         "name": name,
@@ -248,6 +279,7 @@ def _summarize_numeric(
         "histogramBins": hist_bins,
         "histogramCounts": hist_counts,
         "outlierValues": outlier_values,
+        "formatHint": format_hint,
     }
 
 
@@ -500,19 +532,26 @@ def _collect_outlier_values(
     Return the actual values flagged as outliers (capped at MAX_OUTLIER_VALUES).
     The UI renders these as dots on a strip chart beneath the histogram so
     the user can see where the extremes sit relative to the bulk.
+
+    Bug history: an earlier version reindexed `flagged` by the full sorted
+    index of modified_z, which padded the result with NaN entries for the
+    non-flagged rows. The chart legend then reported the padded length
+    (capped at 50) instead of the actual flagged count, so a single
+    outlier showed as "50 outliers" in the legend. Fix: build the sort
+    index from ONLY the flagged subset.
     """
     if mad <= 0:
         return []
     modified_z = 0.6745 * (series - median) / mad
-    flagged = series[modified_z.abs() > MODIFIED_Z_THRESHOLD]
-    if flagged.empty:
+    mask = modified_z.abs() > MODIFIED_Z_THRESHOLD
+    if not mask.any():
         return []
-    # Sort by magnitude of deviation so the most extreme outliers always
-    # make the cap. Keeps the visualization meaningful for very long tails.
-    flagged_sorted = flagged.reindex(
-        modified_z.abs().sort_values(ascending=False).index
-    ).head(MAX_OUTLIER_VALUES)
-    return [float(v) for v in flagged_sorted.values]
+    flagged_z = modified_z[mask]
+    # Sort the flagged Z-scores by magnitude (descending) so the most
+    # extreme outliers always survive the cap.
+    sorted_idx = flagged_z.abs().sort_values(ascending=False).index
+    sorted_flagged_values = series.loc[sorted_idx].head(MAX_OUTLIER_VALUES)
+    return [float(v) for v in sorted_flagged_values.values]
 
 
 def _gini_coefficient(series: pd.Series) -> float:
