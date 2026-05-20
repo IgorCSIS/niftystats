@@ -33,12 +33,22 @@ interface FilePreviewProps {
   warnings: ParseError[]
   /** Clear the parsed file and return to the empty DropZone state. */
   onReset: () => void
+  /** Hand the parsed rows to the Pyodide engine. */
+  onAnalyze: () => void
+  /** Whether the engine is mid-load or mid-compute. Disables the button. */
+  isBusy: boolean
 }
 
 /** How many rows from the top we render. Keeps the DOM small even for huge files. */
 const PREVIEW_ROWS = 10
 
-export function FilePreview({ file, warnings, onReset }: FilePreviewProps) {
+export function FilePreview({
+  file,
+  warnings,
+  onReset,
+  onAnalyze,
+  isBusy,
+}: FilePreviewProps) {
   const visibleRows = file.rows.slice(0, PREVIEW_ROWS)
 
   return (
@@ -144,8 +154,9 @@ export function FilePreview({ file, warnings, onReset }: FilePreviewProps) {
         </table>
       </div>
 
-      {/* Footer with the next-step CTA. Disabled in v2 session 1, the
-          analyze flow lights up when Pyodide ships in v2 session 2. */}
+      {/* Footer with the analyze CTA. Hands the parsed rows to the Pyodide
+          engine via the onAnalyze callback. Button stays disabled while the
+          engine is loading or computing so the user can't double-fire. */}
       <div className="flex flex-col items-start justify-between gap-3 border-t border-slate-800 px-5 py-4 sm:flex-row sm:items-center">
         <p className="text-xs text-slate-500">
           Showing the first {Math.min(PREVIEW_ROWS, file.rows.length)} of{' '}
@@ -153,11 +164,11 @@ export function FilePreview({ file, warnings, onReset }: FilePreviewProps) {
         </p>
         <button
           type="button"
-          disabled
-          title="The stats engine ships next milestone"
-          className="cursor-not-allowed rounded-md border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-500"
+          onClick={onAnalyze}
+          disabled={isBusy}
+          className="rounded-md border border-[var(--color-accent)]/40 bg-[color-mix(in_oklch,var(--color-accent)_18%,transparent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-bright)] transition-colors hover:bg-[color-mix(in_oklch,var(--color-accent)_28%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Analyze (next milestone)
+          {isBusy ? 'Working…' : 'Analyze'}
         </button>
       </div>
     </motion.div>

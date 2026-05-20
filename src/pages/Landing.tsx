@@ -1,19 +1,22 @@
 /**
  * Landing page.
  *
- * Two surfaces, swapped based on whether the user has uploaded a CSV yet:
+ * Three surfaces, stacked:
  *
- *   1. Empty state: hero, trust badge, DropZone, sample-CSV buttons, the
- *      three-card "what you'll get" preview. This is what a fresh visitor
- *      sees and what the OG share image mirrors.
+ *   1. Hero (always visible): wordmark, headline, trust badge.
+ *   2. Either DropZone + samples (no file uploaded) or FilePreview (file
+ *      uploaded). Mutually exclusive.
+ *   3. EngineStatus, only rendered after the first Analyze click. Shows
+ *      loading progress for the Pyodide cold start, then the round-trip
+ *      confirmation, then sits there as a permanent badge of "this is
+ *      what Python saw" until the user resets.
  *
- *   2. Preview state: same hero (slightly compressed) plus the FilePreview
- *      component showing dimensions + 10-row sample. The "Analyze" CTA is
- *      stubbed until v2 session 2 lands Pyodide.
- *
- * Holding parsed-file state at this level (rather than inside DropZone)
- * because milestone 3's Pyodide hand-off also reads it. Lifting it now
- * avoids a refactor when we wire the analyze button.
+ * State management: parsed-file state lives here, engine status lives in a
+ * singleton (lib/pyodide/client.ts) that we subscribe to via the
+ * useEngineStatus hook. Two reasons for that split: the engine is global by
+ * nature (we don't want two competing Pyodide instances), and engine state
+ * needs to outlive any single component's mount cycle so future "show
+ * cached result" UX still works after a reset.
  */
 
 import { useState } from 'react'
@@ -23,24 +26,45 @@ import { Footer } from '@/components/layout/Footer'
 import { DropZone } from '@/components/upload/DropZone'
 import { FilePreview } from '@/components/upload/FilePreview'
 import { SampleRow } from '@/components/upload/SampleButton'
+import { EngineStatus } from '@/components/upload/EngineStatus'
+import { engine } from '@/lib/pyodide/client'
+import { useEngineStatus } from '@/lib/pyodide/useEngineStatus'
 import type { ParsedFile, ParseError } from '@/types/csv'
 
 export function Landing() {
-  // null = no file uploaded yet. Pulling this up to the page level keeps the
-  // DropZone and FilePreview as siblings rather than parent-child, which is
-  // the natural shape since they're mutually exclusive renders.
   const [parsed, setParsed] = useState<{
     file: ParsedFile
     warnings: ParseError[]
   } | null>(null)
 
+  const engineStatus = useEngineStatus()
+
+  // 'isBusy' is the union of "engine is loading" and "engine is computing."
+  // We collapse them for the FilePreview button because the user doesn't
+  // care about the distinction at that level, they just need to know the
+  // button shouldn't be clicked again right now.
+  const isBusy =
+    engineStatus.kind === 'loading' || engineStatus.kind === 'computing'
+
   function handleParsed(file: ParsedFile, warnings: ParseError[]) {
     setParsed({ file, warnings })
-    // Mirror warnings to the console so the user can dig into the full list
-    // (we only show the first one in the FilePreview banner).
     if (warnings.length > 0) {
       console.warn(`[niftystats] ${warnings.length} parse warning(s):`, warnings)
     }
+  }
+
+  function handleAnalyze() {
+    if (!parsed) return
+    // Fire-and-forget. The engine pushes status updates through the listener
+    // hook, so we don't need to await or handle the promise here. Errors
+    // surface in engineStatus.kind === 'error' and the EngineStatus
+    // component shows a retry button.
+    void engine.analyze(parsed.file.rows)
+  }
+
+  function handleReset() {
+    setParsed(null)
+    engine.reset()
   }
 
   return (
@@ -48,13 +72,13 @@ export function Landing() {
       <Header />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 pt-24 sm:pt-28">
-        {/* Eyebrow tag, version pill */}
+        {/* Eyebrow tag, version pill. v0.3 reflects the Pyodide engine landing. */}
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 font-mono text-xs text-[var(--color-accent-bright)]">
           <span
             aria-hidden
             className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]"
           />
-          niftystats v0.2 preview
+          niftystats v0.3 preview
         </div>
 
         <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-5xl">
@@ -67,8 +91,7 @@ export function Landing() {
           uploads to anyone's server.
         </p>
 
-        {/* Trust badge stays visible on both states. It's the load-bearing
-            differentiator and worth reinforcing right above the upload zone. */}
+        {/* Trust badge stays anchored above the upload zone on every state. */}
         <div className="mt-8 flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
           <Lock
             className="h-4 w-4 flex-shrink-0 text-[var(--color-accent-bright)]"
@@ -84,14 +107,15 @@ export function Landing() {
           </div>
         </div>
 
-        {/* The interactive surface. Conditional render swaps the empty state
-            for the preview once a file is parsed. */}
+        {/* Interactive surface, swaps based on whether a CSV has been parsed. */}
         <div className="mt-10">
           {parsed ? (
             <FilePreview
               file={parsed.file}
               warnings={parsed.warnings}
-              onReset={() => setParsed(null)}
+              onReset={handleReset}
+              onAnalyze={handleAnalyze}
+              isBusy={isBusy}
             />
           ) : (
             <>
@@ -100,6 +124,11 @@ export function Landing() {
             </>
           )}
         </div>
+
+        {/* Engine status sits beneath the preview. Renders nothing for 'idle'
+            and 'ready' states, so it only takes up space when there's
+            something to communicate. */}
+        {parsed && <EngineStatus status={engineStatus} />}
 
         {/* What-you'll-get cards. Hidden once a file is loaded since they'd
             duplicate the user's mental model at that point. */}
