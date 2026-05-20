@@ -45,12 +45,5 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"
-  },
-  "pnpm": {
-    "//": "core-js and es5-ext postinstall scripts only print donation banners. They aren't required for either package to function. We acknowledge them here so pnpm v11's deps-status-check stops blocking subsequent commands.",
-    "ignoredBuiltDependencies": [
-      "core-js",
-      "es5-ext"
-    ]
   }
 }

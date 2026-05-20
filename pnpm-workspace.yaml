@@ -1,3 +1,17 @@
-allowBuilds:
-  core-js: true
-  es5-ext: true
+# pnpm settings.
+#
+# Starting in pnpm 11, this file is the single source of truth for pnpm
+# configuration. The `pnpm` field in package.json is no longer read.
+#
+# NiftyStats isn't actually a workspace, but pnpm requires the `packages`
+# field to exist. Listing the root itself ('.') keeps pnpm happy without
+# changing how dependencies hoist.
+packages:
+  - '.'
+
+# Allowlist for postinstall scripts. Both packages here only print donation
+# banners on install, but pnpm v10+ requires explicit approval before
+# running any postinstall script.
+onlyBuiltDependencies:
+  - core-js
+  - es5-ext
