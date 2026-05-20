@@ -274,6 +274,20 @@ function categoricalCardinalityNarrative(s: CategoricalSummary): Narrative {
     }
   }
 
+  // Detect ties at the top. Two or three categories sharing the lead is
+  // common in real data (50/50 plans, three-way splits) and reading
+  // "X is most common, followed by Y" when X and Y are equal is misleading.
+  // Use a tight numeric tolerance because percentages come from float math.
+  const tiedTop = s.topValues.filter((v) => Math.abs(v.pct - top.pct) < 0.0005)
+  if (tiedTop.length >= 2) {
+    const names = tiedTop.map((v) => `\`${v.value}\``).join(tiedTop.length === 2 ? ' and ' : ', ')
+    return {
+      headline: `${formatCount(s.uniqueCount)} unique values; ${names} ${tiedTop.length === 2 ? 'are tied' : 'all tie'} at ${topPct}.`,
+      body: `${tiedTop.length === 2 ? 'Two categories' : `${tiedTop.length} categories`} share the lead. Anything you compare across this column should account for the even split rather than treating one as dominant.`,
+      severity: 'info',
+    }
+  }
+
   const runnerUp = s.topValues[1]
   return {
     headline: `${formatCount(s.uniqueCount)} unique values; \`${top.value}\` is most common at ${topPct}.`,

@@ -11,7 +11,7 @@
  *   any state can transition to error; user retry sends them back to loading.
  */
 
-import type { DescriptiveResult } from '@/types/stats'
+import type { AnalysisResult } from '@/types/stats'
 
 export type EngineStatus =
   | { kind: 'idle' }
@@ -21,8 +21,8 @@ export type EngineStatus =
   | { kind: 'ready' }
   /** A computation is in flight. */
   | { kind: 'computing'; detail?: string }
-  /** Last computation completed, full descriptive result is available. */
-  | { kind: 'done'; result: DescriptiveResult }
+  /** Last computation completed, full combined analysis result is available. */
+  | { kind: 'done'; result: AnalysisResult }
   /** Either the load or a computation failed. */
   | { kind: 'error'; message: string }
 

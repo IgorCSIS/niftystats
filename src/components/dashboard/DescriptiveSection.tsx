@@ -60,8 +60,12 @@ export function DescriptiveSection({ result }: DescriptiveSectionProps) {
       className="mt-8"
       aria-labelledby="descriptive-heading"
     >
-      {/* Section header. */}
-      <header className="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
+      {/* Section header. data-pdf-block so the PDF exporter treats it as
+          its own atomic snapshot. */}
+      <header
+        className="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end"
+        data-pdf-block="true"
+      >
         <div>
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--color-accent-bright)]">
             <BarChart3 className="h-3 w-3" aria-hidden />
@@ -94,7 +98,10 @@ export function DescriptiveSection({ result }: DescriptiveSectionProps) {
 
           return (
             <div key={kind}>
-              <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-slate-500">
+              <div
+                className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-slate-500"
+                data-pdf-block="true"
+              >
                 <span>{GROUP_LABEL[kind]}</span>
                 <span className="text-slate-700">/</span>
                 <span>{bucket.length}</span>
@@ -120,17 +127,25 @@ export function DescriptiveSection({ result }: DescriptiveSectionProps) {
  * top-values list, future numeric histogram, etc.). Keeping this wrapper
  * here rather than inside ColumnCard means the card itself stays a clean
  * "stats + narratives" primitive.
+ *
+ * `data-pdf-block` marks each wrapper as a natural page-break boundary
+ * for the PDF exporter: the paginator will avoid slicing through a card
+ * + its addendum and instead start a new page if they don't fit together.
  */
 function ColumnCardWithExtras({ summary }: { summary: ColumnSummary }) {
   if (summary.kind === 'categorical') {
     return (
-      <div>
+      <div data-pdf-block="true">
         <ColumnCard summary={summary} />
         <CategoricalAddendum summary={summary} />
       </div>
     )
   }
-  return <ColumnCard summary={summary} />
+  return (
+    <div data-pdf-block="true">
+      <ColumnCard summary={summary} />
+    </div>
+  )
 }
 
 function CategoricalAddendum({ summary }: { summary: CategoricalSummary }) {
@@ -154,7 +169,7 @@ function DataQualitySection({ columns }: { columns: ColumnSummary[] }) {
   if (!hasMissing) return null
 
   return (
-    <div className="mb-10">
+    <div className="mb-10" data-pdf-block="true">
       <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-slate-500">
         <span>Data quality</span>
         <span className="text-slate-700">/</span>

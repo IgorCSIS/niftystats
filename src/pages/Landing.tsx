@@ -12,7 +12,7 @@
  * singleton (lib/pyodide/client.ts) consumed via useEngineStatus().
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Lock, Sparkles } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -21,6 +21,8 @@ import { FilePreview } from '@/components/upload/FilePreview'
 import { SampleRow } from '@/components/upload/SampleButton'
 import { EngineStatus } from '@/components/upload/EngineStatus'
 import { DescriptiveSection } from '@/components/dashboard/DescriptiveSection'
+import { RelationalSection } from '@/components/dashboard/RelationalSection'
+import { ExportButton } from '@/components/dashboard/ExportButton'
 import { engine } from '@/lib/pyodide/client'
 import { useEngineStatus } from '@/lib/pyodide/useEngineStatus'
 import type { ParsedFile, ParseError } from '@/types/csv'
@@ -30,6 +32,12 @@ export function Landing() {
     file: ParsedFile
     warnings: ParseError[]
   } | null>(null)
+
+  // Captured at render time and read by the ExportButton when the user
+  // clicks Download. We wrap both descriptive + relational sections inside
+  // this ref so the PDF capture includes everything visible in the
+  // dashboard, not just one half.
+  const dashboardRef = useRef<HTMLDivElement | null>(null)
 
   const engineStatus = useEngineStatus()
 
@@ -63,7 +71,7 @@ export function Landing() {
     <div className="bg-grain flex min-h-screen flex-col">
       <Header />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 pt-24 sm:pt-28">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-20 sm:px-6 sm:pt-28">
         {/* Hero column. Constrained narrower than the dashboard so the
             descriptive section can spread wider once it shows up. */}
         <div className="mx-auto max-w-3xl">
@@ -72,7 +80,7 @@ export function Landing() {
               aria-hidden
               className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]"
             />
-            niftystats v0.4 preview
+            niftystats v0.6 preview
           </div>
 
           <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-5xl">
@@ -147,9 +155,23 @@ export function Landing() {
 
         {/* Dashboard sits below the hero column and uses the wider main
             wrapper so columns have more breathing room. Only renders once
-            the engine has produced a real result. */}
+            the engine has produced a real result. Wrapped in a ref'd
+            container so the PDF exporter can capture the whole thing. */}
         {engineStatus.kind === 'done' && (
-          <DescriptiveSection result={engineStatus.result} />
+          <>
+            <div ref={dashboardRef}>
+              <DescriptiveSection result={engineStatus.result.descriptive} />
+              {engineStatus.result.relational && (
+                <RelationalSection result={engineStatus.result.relational} />
+              )}
+            </div>
+            {parsed && (
+              <ExportButton
+                getTarget={() => dashboardRef.current}
+                csvFilename={parsed.file.filename}
+              />
+            )}
+          </>
         )}
       </main>
 

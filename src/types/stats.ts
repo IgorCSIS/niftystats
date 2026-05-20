@@ -158,8 +158,8 @@ export type ColumnSummary =
   | UnknownSummary
 
 /**
- * Top-level descriptive result. The Pyodide client returns this when the
- * user clicks Analyze.
+ * Top-level descriptive result. The Pyodide client returns this as part of
+ * the AnalysisResult after Analyze is clicked.
  */
 export interface DescriptiveResult {
   /** Total rows in the source CSV. */
@@ -172,4 +172,125 @@ export interface DescriptiveResult {
   generatedAt: string
   /** How long the descriptive pass took, in milliseconds. */
   computeMs: number
+}
+
+// =====================================================================
+// Relational result types (v3 phase 1)
+// =====================================================================
+
+/**
+ * A square matrix of correlation values between numeric columns. We carry
+ * both Pearson (linear) and Spearman (rank-based) matrices so the UI can
+ * compare them and flag non-linear relationships that linear correlation
+ * alone would miss.
+ *
+ * `values[i][j]` is the correlation between columns[i] and columns[j].
+ * Diagonal entries are always 1.0. NaN/Inf gets cleaned to null by the
+ * Python side before it reaches us.
+ */
+export interface CorrelationMatrix {
+  /** Column names along both axes, in matrix order. */
+  columns: string[]
+  /** values[i][j] = correlation coefficient. -1 to 1. null when undefined. */
+  values: Array<Array<number | null>>
+  /** Two-tailed p-values matching `values`. */
+  pValues: Array<Array<number | null>>
+}
+
+/**
+ * A highlighted pair of columns extracted from the correlation matrices.
+ * Used to render the "strongest relationships" strip at the top of the
+ * relational section without forcing the user to read the whole heatmap.
+ */
+export interface TopCorrelation {
+  columnA: string
+  columnB: string
+  pearson: number
+  spearman: number
+  /** Two-tailed p-value (the smaller of pearson / spearman). */
+  pValue: number
+  /**
+   * True when |spearman - pearson| is large enough to suggest a non-linear
+   * relationship. The narrative builder uses this to add a note.
+   */
+  nonLinearHint: boolean
+}
+
+/**
+ * One regression run: predict a single target column from a set of feature
+ * columns. We do this per numeric target so the user sees what predicts
+ * each business metric.
+ */
+export interface RegressionAnalysis {
+  /** The column being predicted. */
+  target: string
+  /** Linear OLS only in v3 phase 1. Logistic regression lands later. */
+  kind: 'linear'
+  /** R^2: fraction of target variance explained by features. 0 to 1. */
+  rSquared: number
+  /** Adjusted R^2: corrects for the number of features. */
+  adjustedRSquared: number
+  /** Sample size after dropping rows with NaN in any feature or target. */
+  nObservations: number
+  /** Predictors sorted by absolute standardized coefficient, most influential first. */
+  coefficients: CoefficientEstimate[]
+  /**
+   * Features flagged as highly collinear with others (VIF > 10). These
+   * coefficients are unreliable and should be interpreted with care.
+   */
+  multicollinearFeatures: string[]
+  /**
+   * Why we couldn't run this regression, if applicable. When non-null,
+   * `coefficients` is empty and metrics are 0.
+   */
+  skippedReason: string | null
+}
+
+export interface CoefficientEstimate {
+  feature: string
+  /** Raw coefficient on the feature's natural scale. */
+  estimate: number
+  /**
+   * Standardized coefficient (scale-free). Lets us rank features by
+   * impact even when they're measured in wildly different units.
+   */
+  standardizedEstimate: number
+  /** Standard error of the raw estimate. */
+  standardError: number
+  /** t-statistic for testing H0: coefficient = 0. */
+  tStatistic: number
+  /** Two-tailed p-value for the t-statistic. */
+  pValue: number
+  /** True when p < 0.05. */
+  isSignificant: boolean
+}
+
+export interface RelationalResult {
+  /** Pearson correlations + p-values. Linear relationships. */
+  pearson: CorrelationMatrix
+  /** Spearman rank correlations + p-values. Monotonic relationships, robust to non-linearity. */
+  spearman: CorrelationMatrix
+  /**
+   * Highlighted column pairs. Up to 3 strongest positive, 3 strongest
+   * negative, 3 with the biggest pearson/spearman gap (non-linear hints).
+   * UI renders this as the "top relationships" strip.
+   */
+  topPositive: TopCorrelation[]
+  topNegative: TopCorrelation[]
+  topNonLinear: TopCorrelation[]
+  /** One regression analysis per numeric target column. */
+  regressions: RegressionAnalysis[]
+  computeMs: number
+}
+
+/**
+ * Combined analysis result. The Pyodide client returns this on every
+ * Analyze run. Each sub-result is optional so future analyses (advanced,
+ * etc.) can be added without breaking existing consumers.
+ */
+export interface AnalysisResult {
+  descriptive: DescriptiveResult
+  relational: RelationalResult | null
+  generatedAt: string
+  totalMs: number
 }
