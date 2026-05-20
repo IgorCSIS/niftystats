@@ -132,7 +132,10 @@ export function FilePreview({ file, warnings, onReset }: FilePreviewProps) {
                     key={col.name}
                     className="whitespace-nowrap px-5 py-2.5 font-mono text-xs text-slate-300"
                   >
-                    {formatCellValue(row[col.name])}
+                    {/* Guard against undefined rows. Shouldn't happen with
+                        worker mode off, but a single bad row from a future
+                        parser change shouldn't blank the whole page. */}
+                    {formatCellValue(row?.[col.name])}
                   </td>
                 ))}
               </tr>

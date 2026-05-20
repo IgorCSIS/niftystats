@@ -1,224 +1,85 @@
 /**
- * CSV ingestion + type sniffing.
+ * CSV ingestion, main-thread entry point.
  *
- * Uses PapaParse in worker mode so a 100k-row CSV doesn't freeze the main
- * thread during parse. PapaParse handles delimiter detection, BOM stripping,
- * and quoted-field edge cases for us, so this module focuses on the parts
- * PapaParse doesn't: column type inference and error normalization.
+ * This module is the API surface for the rest of the app. The heavy lifting
+ * (PapaParse + type sniffing) happens in a Web Worker bundled by Vite via
+ * the `?worker` import syntax, so neither the parse nor the sniff can block
+ * the main thread on big files.
  *
- * The type sniffer is intentionally simple. It looks at up to the first 200
- * non-null values per column and applies cheap heuristics: parseFloat,
- * Date.parse, boolean keywords. We err toward "categorical" on ambiguous
- * data because that's the safest assumption for the downstream stats engine,
- * which can always coerce categorical to numeric if asked but can't go the
- * other way without losing information.
+ * We create a fresh worker per parse and terminate it on completion. That
+ * costs a few milliseconds of startup per file, which is negligible
+ * compared to even a small parse (~50ms for a 1k-row CSV). The alternative,
+ * keeping a long-lived worker, would let us pool but complicates lifecycle
+ * (race conditions if two parses overlap, leak risk if a parse never
+ * resolves). Spinning up per parse is simpler and easy to reason about.
  */
 
-import Papa from 'papaparse'
-import type { ColumnType } from '@/types/stats'
-import type { ParseError, ParsedColumn, ParsedFile } from '@/types/csv'
+import CsvWorker from '@/workers/csvParser.worker?worker'
+import type {
+  ParseRequest,
+  ParseResponse,
+} from '@/workers/csvParser.worker'
+import type { ParseError, ParsedFile } from '@/types/csv'
 
-/** How many rows we look at when sniffing column types. */
-const SNIFF_LIMIT = 200
-
-/** How many sample values per column we keep for the preview UI. */
-const SAMPLES_PER_COLUMN = 5
-
-/**
- * Parse a File (from <input type="file"> or drag-drop) into a ParsedFile.
- *
- * Rejects on fatal errors. Resolves with both the data AND any warnings
- * collected during parse so the UI can surface them without blocking.
- */
+/** Parse a File (drag-drop or click-to-select) into a ParsedFile via worker. */
 export function parseCsvFile(
   file: File,
 ): Promise<{ data: ParsedFile; warnings: ParseError[] }> {
-  return new Promise((resolve, reject) => {
-    const startedAt = performance.now()
-    const warnings: ParseError[] = []
-
-    Papa.parse<Record<string, string>>(file, {
-      // Worker mode keeps parsing off the main thread. PapaParse vendors its
-      // own worker bundle so we don't need to write one ourselves.
-      worker: true,
-      header: true,
-      // `skipEmptyLines: 'greedy'` drops both fully empty rows AND rows that
-      // are just whitespace. Real-world CSVs from Excel exports often have
-      // trailing blank rows that would otherwise pollute the row count.
-      skipEmptyLines: 'greedy',
-      // `dynamicTyping: false` keeps every value as a string at this stage.
-      // We'll let Python do the actual type coercion in milestone 3 so the
-      // numbers pandas sees match exactly what the preview shows.
-      dynamicTyping: false,
-      complete: (results) => {
-        const parseMs = Math.round(performance.now() - startedAt)
-
-        if (!results.data.length) {
-          reject({
-            level: 'fatal' as const,
-            message: 'The file appears to be empty or contains no data rows.',
-          } satisfies ParseError)
-          return
-        }
-
-        // PapaParse exposes its own non-fatal errors here. Surface them as
-        // warnings rather than reject; most are recoverable (a missing field
-        // in one row out of 10,000 isn't worth blocking on).
-        for (const err of results.errors) {
-          warnings.push({
-            level: 'warning',
-            message: `${err.type}: ${err.message}`,
-            row: typeof err.row === 'number' ? err.row + 1 : undefined,
-          })
-        }
-
-        const headers = results.meta.fields ?? []
-        if (!headers.length) {
-          reject({
-            level: 'fatal' as const,
-            message:
-              'Could not find a header row. CSV must have column names on the first line.',
-          } satisfies ParseError)
-          return
-        }
-
-        const columns = sniffColumns(results.data, headers)
-
-        resolve({
-          data: {
-            filename: file.name,
-            sizeBytes: file.size,
-            rows: results.data,
-            columns,
-            parseMs,
-          },
-          warnings,
-        })
-      },
-      error: (err) => {
-        reject({
-          level: 'fatal' as const,
-          message: err.message || 'Unknown error while parsing the CSV.',
-        } satisfies ParseError)
-      },
-    })
-  })
+  return runWorker({ source: { kind: 'file', file } })
 }
 
-/**
- * Parse a CSV string (used for the bundled sample CSVs we fetch from /public).
- * Same return shape as parseCsvFile but takes raw text instead of a File.
- */
-export async function parseCsvText(
+/** Parse a string (used for the bundled /public sample CSVs) via worker. */
+export function parseCsvText(
   text: string,
   filename: string,
 ): Promise<{ data: ParsedFile; warnings: ParseError[] }> {
-  const blob = new Blob([text], { type: 'text/csv' })
-  const file = new File([blob], filename, { type: 'text/csv' })
-  return parseCsvFile(file)
+  return runWorker({ source: { kind: 'text', text, filename } })
 }
 
 /**
- * Walk every column once, look at the first SNIFF_LIMIT non-null values,
- * and decide the column type. Returns a ParsedColumn for each header.
+ * Send a ParseRequest to a fresh worker and resolve once it replies.
  *
- * Performance note: we iterate the rows array sniff-limit times here (once
- * per column). For 10k row * 50 col tables this is still under 50ms in
- * practice, so we keep the code simple over going column-major.
+ * Both success and error paths terminate the worker so we don't leak. The
+ * Promise rejects with the structured ParseError from the worker, which
+ * preserves the level (fatal vs warning) for the UI to render.
  */
-function sniffColumns(
-  rows: Array<Record<string, string>>,
-  headers: string[],
-): ParsedColumn[] {
-  return headers.map((name) => {
-    let missingCount = 0
-    const samples: string[] = []
-    const nonNullValues: string[] = []
+function runWorker(
+  request: ParseRequest,
+): Promise<{ data: ParsedFile; warnings: ParseError[] }> {
+  return new Promise((resolve, reject) => {
+    const worker = new CsvWorker()
 
-    for (let i = 0; i < rows.length; i++) {
-      const raw = rows[i]?.[name]
-      const value = typeof raw === 'string' ? raw.trim() : ''
+    worker.addEventListener(
+      'message',
+      (event: MessageEvent<ParseResponse>) => {
+        const resp = event.data
+        worker.terminate()
+        if (resp.ok) {
+          resolve({ data: resp.payload, warnings: resp.warnings })
+        } else {
+          reject(resp.error)
+        }
+      },
+      { once: true },
+    )
 
-      if (!value) {
-        missingCount++
-        continue
-      }
+    worker.addEventListener(
+      'error',
+      (event) => {
+        worker.terminate()
+        // The browser fires this for uncaught exceptions inside the worker.
+        // Wrap into our ParseError shape so the caller has consistent
+        // handling regardless of failure mode.
+        reject({
+          level: 'fatal',
+          message: event.message || 'CSV parser worker crashed unexpectedly.',
+        } satisfies ParseError)
+      },
+      { once: true },
+    )
 
-      if (samples.length < SAMPLES_PER_COLUMN) {
-        samples.push(value)
-      }
-
-      if (nonNullValues.length < SNIFF_LIMIT) {
-        nonNullValues.push(value)
-      }
-    }
-
-    return {
-      name,
-      type: inferType(nonNullValues),
-      missingCount,
-      sampleValues: samples,
-    }
+    worker.postMessage(request)
   })
-}
-
-/**
- * Decide a column's type from a sample of non-null values.
- *
- * Order matters: we check boolean first (most restrictive), then datetime,
- * then numeric, then fall through to categorical. Each check requires
- * roughly 90% of samples to match, so a single malformed value doesn't kick
- * a column out of its real type.
- */
-function inferType(samples: string[]): ColumnType {
-  if (samples.length === 0) return 'unknown'
-
-  // Threshold for a type to "win". 90% gives us tolerance for a few weird
-  // rows in a 200-sample window without being so loose that we mis-type.
-  const threshold = Math.ceil(samples.length * 0.9)
-
-  let booleanHits = 0
-  let dateHits = 0
-  let numericHits = 0
-
-  for (const v of samples) {
-    if (isBooleanLike(v)) booleanHits++
-    if (isDateLike(v)) dateHits++
-    if (isNumericLike(v)) numericHits++
-  }
-
-  if (booleanHits >= threshold) return 'boolean'
-  // Numeric check before datetime because raw timestamps (like 1714857600)
-  // would parse as both, and numeric is the safer interpretation.
-  if (numericHits >= threshold) return 'numeric'
-  if (dateHits >= threshold) return 'datetime'
-  return 'categorical'
-}
-
-const BOOLEAN_TRUE = new Set(['true', 'yes', 'y', '1', 't'])
-const BOOLEAN_FALSE = new Set(['false', 'no', 'n', '0', 'f'])
-
-function isBooleanLike(v: string): boolean {
-  const lower = v.toLowerCase()
-  return BOOLEAN_TRUE.has(lower) || BOOLEAN_FALSE.has(lower)
-}
-
-function isNumericLike(v: string): boolean {
-  // Strip thousands separators (commas in US, periods in some EU locales is
-  // out of scope for v2; we accept the dominant US convention). The regex
-  // covers integers, decimals, leading minus, and scientific notation.
-  const cleaned = v.replace(/,/g, '')
-  if (cleaned === '') return false
-  return /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(cleaned)
-}
-
-function isDateLike(v: string): boolean {
-  // We require the string to LOOK like a date (contains a separator) before
-  // running Date.parse, because Date.parse is famously permissive and would
-  // accept things like "10" as October of the current year.
-  if (!/[-/:]/.test(v)) return false
-  const parsed = Date.parse(v)
-  return !Number.isNaN(parsed)
 }
 
 /**
