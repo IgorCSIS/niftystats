@@ -2,68 +2,52 @@
  * Pyodide runtime, the JS-side wrapper around the Python interpreter that
  * runs in WebAssembly inside the user's browser.
  *
- * Why a singleton: Pyodide is ~10MB and takes 5-10s to boot. We only want to
- * pay that cost once per session, and we want every component that needs
- * Python results to read from the same underlying instance.
+ * Why a singleton: Pyodide is ~10MB and takes 5-10s to boot the first time.
+ * We only want to pay that cost once per session, and we want every
+ * component that needs Python results to read from the same instance.
  *
  * Why dynamic import: `await import('pyodide')` lets Vite code-split Pyodide
  * into its own chunk that only loads when the user clicks Analyze. Without
  * this, every visitor pays the Pyodide cost on initial page load whether or
  * not they ever upload a file.
  *
- * The public surface is a subscribe/load/analyze API plus the singleton
- * itself. UI components subscribe to status changes, kick off load/analyze
- * via the singleton, and re-render on each status update.
+ * Why scipy: the descriptive engine uses scipy.stats for normality testing
+ * (Shapiro-Wilk, Anderson-Darling) and the median-absolute-deviation scale.
+ * scipy adds ~13MB to the load, but the service worker caches it after the
+ * first visit and the SW-cached load is sub-second.
  */
 
+import type { EngineListener, EngineStatus } from './types'
 import type {
-  EngineListener,
-  EngineStatus,
-  PyodideRoundTripResult,
-} from './types'
+  DescriptiveResult,
+  ColumnType,
+} from '@/types/stats'
+
+// Vite's `?raw` query inlines the file contents as a string at build time.
+// Keeping the Python in its own .py file gives us editor syntax highlighting
+// and lets us iterate on the engine without touching TypeScript.
+import descriptiveScript from '@/python/descriptive.py?raw'
 
 /**
- * Pyodide CDN index URL. We pin to a specific version so we don't get
+ * Pyodide CDN index URL. Pin to a specific version so we don't get
  * surprised by a Pyodide release with breaking changes. The version here
- * MUST match the version in package.json so the JS-side bindings and the
- * wasm-side runtime are compatible.
+ * MUST match the version in package.json.
  */
 const PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'
 
-/**
- * The minimal Python snippet that runs when the user clicks Analyze. For
- * session 2 we just round-trip the parsed rows through pandas and return
- * the shape and column names. Session 3 will replace this with the real
- * descriptive engine.
- *
- * We use globals to pass data because it's simpler than the runPython
- * return-value path and avoids quoting issues with embedded JSON.
- */
-const ROUND_TRIP_SCRIPT = `
-import json
-import pandas as pd
-
-# rows_json is set as a JS global before runPython is invoked.
-rows = json.loads(rows_json)
-df = pd.DataFrame(rows)
-
-# Pack the result back into JSON so the JS side can read it without dealing
-# with Pyodide proxies. Cheap for small results; we'll move to PyProxy.toJs()
-# in milestone 4 when results get bigger.
-result_json = json.dumps({
-    "rows": int(df.shape[0]),
-    "cols": int(df.shape[1]),
-    "columnNames": list(df.columns),
-})
-`
+/** Minimal column metadata we hand to the Python side. */
+interface ColumnMeta {
+  name: string
+  type: ColumnType
+}
 
 class EngineRuntime {
   private status: EngineStatus = { kind: 'idle' }
   private listeners = new Set<EngineListener>()
-  // `unknown` because we don't want the @types/pyodide payload in the type
-  // graph at this layer. The concrete type is opaque to callers anyway.
-  private pyodide: unknown = null
+  private pyodide: PyodideLike | null = null
   private loadPromise: Promise<void> | null = null
+  /** Whether descriptiveScript has been runPython'd at least once. */
+  private scriptLoaded = false
 
   /**
    * Subscribe to engine-status updates. Returns an unsubscribe function.
@@ -101,57 +85,88 @@ class EngineRuntime {
     this.update({
       kind: 'loading',
       step: 'Downloading engine',
-      detail: 'About 10MB the first time, cached after.',
+      detail: 'Python runtime, about 10MB the first time. Cached after.',
     })
 
-    // Dynamic import so Vite code-splits Pyodide into its own chunk.
     const { loadPyodide } = await import('pyodide')
 
-    this.pyodide = await loadPyodide({
+    this.pyodide = (await loadPyodide({
       indexURL: PYODIDE_INDEX_URL,
-      // We don't want Pyodide's startup messages spamming the user's
-      // console, so we route stdout/stderr through no-op handlers. We can
-      // capture them later when debugging Python errors becomes a thing.
       stdout: () => {},
       stderr: () => {},
-    })
+    })) as unknown as PyodideLike
 
+    // Packages load in sequence so we can show meaningful progress per
+    // package. Pyodide accepts a single loadPackage([...]) call too but
+    // that hides which one the user is waiting on.
     this.update({
       kind: 'loading',
       step: 'Loading numpy',
-      detail: 'Numerical primitives.',
+      detail: 'Numerical arrays and linear algebra.',
     })
-    await (this.pyodide as PyodideLike).loadPackage(['numpy'])
+    await this.pyodide.loadPackage(['numpy'])
 
     this.update({
       kind: 'loading',
       step: 'Loading pandas',
-      detail: 'Dataframes and stats.',
+      detail: 'Dataframes and column operations.',
     })
-    await (this.pyodide as PyodideLike).loadPackage(['pandas'])
+    await this.pyodide.loadPackage(['pandas'])
+
+    this.update({
+      kind: 'loading',
+      step: 'Loading scipy',
+      detail: 'Robust statistics and normality tests. Largest package, hang tight.',
+    })
+    await this.pyodide.loadPackage(['scipy'])
+
+    this.update({
+      kind: 'loading',
+      step: 'Wiring engine',
+      detail: 'Loading the NiftyStats descriptive engine.',
+    })
+    // Run the descriptive.py module once to register `run_descriptive` in
+    // the Python global namespace. Subsequent analyze() calls just invoke
+    // the already-defined function.
+    this.pyodide.runPython(descriptiveScript)
+    this.scriptLoaded = true
 
     this.update({ kind: 'ready' })
   }
 
   /**
-   * Run the round-trip script against the user's parsed rows. Triggers a
+   * Run the descriptive engine against the user's parsed rows. Triggers a
    * load() if Pyodide isn't ready yet.
    */
-  async analyze(rows: Array<Record<string, string>>): Promise<void> {
+  async analyze(
+    rows: Array<Record<string, string>>,
+    columns: ColumnMeta[],
+  ): Promise<void> {
     await this.load()
-    this.update({ kind: 'computing', detail: 'Handing your data to pandas.' })
+    if (!this.pyodide || !this.scriptLoaded) {
+      this.update({
+        kind: 'error',
+        message: 'Engine failed to initialize properly.',
+      })
+      return
+    }
+    this.update({
+      kind: 'computing',
+      detail: 'Computing descriptive statistics across every column.',
+    })
 
     try {
-      const py = this.pyodide as PyodideLike
-      // Pass rows in as a global JSON string. JSON keeps the boundary
-      // dead simple, the cost is one extra serialize/deserialize per
-      // analyze which is negligible at our scale.
+      const py = this.pyodide
+      // Hand-off contract: rows + column metadata as JSON strings.
+      // Mirrors the JSON-in / JSON-out boundary defined in descriptive.py.
       py.globals.set('rows_json', JSON.stringify(rows))
-      py.runPython(ROUND_TRIP_SCRIPT)
+      py.globals.set('columns_meta_json', JSON.stringify(columns))
+      py.runPython(
+        'result_json = run_descriptive(rows_json, columns_meta_json)',
+      )
 
-      // Pull the result string back out and parse it on the JS side.
       const resultJson = py.globals.get('result_json') as string
-      const result = JSON.parse(resultJson) as PyodideRoundTripResult
+      const result = JSON.parse(resultJson) as DescriptiveResult
 
       this.update({ kind: 'done', result })
     } catch (err) {
@@ -161,7 +176,7 @@ class EngineRuntime {
     }
   }
 
-  /** Reset back to idle. Used by retry buttons. */
+  /** Reset back to ready/idle. Used by retry buttons and reset flows. */
   reset(): void {
     this.update(this.pyodide ? { kind: 'ready' } : { kind: 'idle' })
   }
@@ -174,8 +189,7 @@ class EngineRuntime {
 
 /**
  * Minimal subset of Pyodide's public API that we actually touch. Typed by
- * hand so we don't have to pull the full @types/pyodide graph through this
- * file (which would also drag the worker types into the main bundle).
+ * hand so we don't pull the full @types/pyodide graph into this file.
  */
 interface PyodideLike {
   loadPackage(packages: string[]): Promise<void>
@@ -192,3 +206,5 @@ interface PyodideLike {
  * across the app.
  */
 export const engine = new EngineRuntime()
+
+export type { ColumnMeta }

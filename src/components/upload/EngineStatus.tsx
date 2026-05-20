@@ -21,7 +21,7 @@
 
 import type { ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
+import { Loader2, AlertCircle, RotateCcw } from 'lucide-react'
 import { engine } from '@/lib/pyodide/client'
 import type { EngineStatus as EngineStatusType } from '@/lib/pyodide/types'
 
@@ -29,6 +29,12 @@ interface EngineStatusProps {
   status: EngineStatusType
 }
 
+/**
+ * EngineStatus shows loading / computing / error panels. The 'done' state
+ * is intentionally NOT rendered here, the DescriptiveSection component
+ * owns the rendering of completed results so the dashboard is the
+ * "success" surface, not a compact banner.
+ */
 export function EngineStatus({ status }: EngineStatusProps) {
   return (
     <AnimatePresence mode="wait">
@@ -39,15 +45,9 @@ export function EngineStatus({ status }: EngineStatusProps) {
       )}
       {status.kind === 'computing' && (
         <Panel key="computing">
-          <LoadingView step="Running analysis" detail={status.detail} />
-        </Panel>
-      )}
-      {status.kind === 'done' && (
-        <Panel key="done" tone="success">
-          <DoneView
-            rows={status.result.rows}
-            cols={status.result.cols}
-            columnNames={status.result.columnNames}
+          <LoadingView
+            step={status.detail ?? 'Running analysis'}
+            detail="Computing per-column statistics in Python."
           />
         </Panel>
       )}
@@ -132,53 +132,6 @@ function ProgressDots() {
           }}
         />
       ))}
-    </div>
-  )
-}
-
-function DoneView({
-  rows,
-  cols,
-  columnNames,
-}: {
-  rows: number
-  cols: number
-  columnNames: string[]
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <CheckCircle2
-        className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--color-accent-bright)]"
-        aria-hidden
-      />
-      <div className="flex-1">
-        <div className="text-sm text-slate-100">
-          <span className="font-medium">Engine ready.</span>{' '}
-          <span className="text-slate-400">
-            Loaded{' '}
-            <span className="font-mono text-slate-200">
-              {rows.toLocaleString()}
-            </span>{' '}
-            rows ×{' '}
-            <span className="font-mono text-slate-200">{cols}</span> columns
-            into pandas.
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {columnNames.map((name) => (
-            <span
-              key={name}
-              className="rounded border border-slate-800 bg-slate-900/60 px-1.5 py-0.5 font-mono text-[10px] text-slate-300"
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-        <div className="mt-3 text-xs text-slate-500">
-          Real Python (pandas, numpy) is running locally in your browser. The
-          full descriptive engine lands next session.
-        </div>
-      </div>
     </div>
   )
 }

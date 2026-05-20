@@ -7,21 +7,11 @@
  * payload automatically.
  *
  * Lifecycle:
- *   idle -> loading -> ready -> computing -> done -> ready -> computing -> done -> ...
+ *   idle -> loading -> ready -> computing -> done -> ready -> computing -> ...
  *   any state can transition to error; user retry sends them back to loading.
  */
 
-/**
- * A single descriptive result. This is intentionally minimal for v2 session 2,
- * the goal here is to prove the JS<->Python round-trip works. Session 3 will
- * replace this with the full AnalysisResult shape from src/types/stats.ts.
- */
-export interface PyodideRoundTripResult {
-  rows: number
-  cols: number
-  /** Echoed back from Python so we can confirm the data made it across the boundary. */
-  columnNames: string[]
-}
+import type { DescriptiveResult } from '@/types/stats'
 
 export type EngineStatus =
   | { kind: 'idle' }
@@ -31,8 +21,8 @@ export type EngineStatus =
   | { kind: 'ready' }
   /** A computation is in flight. */
   | { kind: 'computing'; detail?: string }
-  /** Last computation completed, result is available. */
-  | { kind: 'done'; result: PyodideRoundTripResult }
+  /** Last computation completed, full descriptive result is available. */
+  | { kind: 'done'; result: DescriptiveResult }
   /** Either the load or a computation failed. */
   | { kind: 'error'; message: string }
 
