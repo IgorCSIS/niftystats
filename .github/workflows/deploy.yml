@@ -51,7 +51,11 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts skips postinstall lifecycle scripts (core-js and
+        # es5-ext only print donation banners and we don't want CI to block on
+        # pnpm's interactive approval gate). Build correctness isn't affected:
+        # nothing in our dep graph requires postinstall to function.
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm build
