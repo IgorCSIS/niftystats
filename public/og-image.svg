@@ -1,0 +1,72 @@
+<!--
+  Open Graph share image. 1200x630 is the modern standard size (matches
+  LinkedIn, Twitter X, Discord, Slack, Facebook previews). We stay close to
+  the live page aesthetic so the preview reads as "same product" rather than
+  "marketing art."
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="0%" r="65%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background. -->
+  <rect width="1200" height="630" fill="#020617"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Faint horizontal grid lines suggest a chart without being one. -->
+  <g stroke="#1e293b" stroke-width="1" opacity="0.6">
+    <line x1="0" y1="180" x2="1200" y2="180"/>
+    <line x1="0" y1="300" x2="1200" y2="300"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+    <line x1="0" y1="540" x2="1200" y2="540"/>
+  </g>
+
+  <!-- Bar chart accent, lower-right. Reads as "stats" at a glance. -->
+  <g fill="#10b981">
+    <rect x="920" y="470" width="48" height="100" rx="3" opacity="0.35"/>
+    <rect x="980" y="410" width="48" height="160" rx="3" opacity="0.5"/>
+    <rect x="1040" y="340" width="48" height="230" rx="3" opacity="0.7"/>
+    <rect x="1100" y="270" width="48" height="300" rx="3" opacity="0.95"/>
+  </g>
+
+  <!-- Wordmark. -->
+  <g transform="translate(80,100)">
+    <circle cx="14" cy="14" r="10" fill="#10b981"/>
+    <circle cx="14" cy="14" r="16" fill="#10b981" fill-opacity="0.2"/>
+    <text x="42" y="22" font-family="'JetBrains Mono','Cascadia Code',monospace" font-size="28" font-weight="500" fill="#cbd5e1">niftystats</text>
+    <text x="200" y="22" font-family="'JetBrains Mono','Cascadia Code',monospace" font-size="14" font-weight="500" fill="#64748b" letter-spacing="2">V0.1 PREVIEW</text>
+  </g>
+
+  <!-- Headline. -->
+  <text x="80" y="290" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="76" font-weight="600" fill="#f8fafc">
+    Statistics for the
+  </text>
+  <text x="80" y="375" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="76" font-weight="600" fill="#f8fafc">
+    rest of us.
+  </text>
+
+  <!-- Subhead. -->
+  <text x="80" y="445" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="28" font-weight="400" fill="#94a3b8">
+    Drop a CSV. Get plain-English statistical insights.
+  </text>
+
+  <!-- Privacy badge. Mirrors the one on the live landing page. -->
+  <g transform="translate(80,500)">
+    <rect width="520" height="62" rx="10" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+    <circle cx="28" cy="31" r="5" fill="#34d399"/>
+    <circle cx="28" cy="31" r="10" fill="#34d399" fill-opacity="0.2"/>
+    <text x="48" y="38" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="20" font-weight="500" fill="#e2e8f0">
+      Your data never leaves your browser.
+    </text>
+  </g>
+
+  <!-- Bottom gradient fade to anchor the chart accent. -->
+  <rect y="540" width="1200" height="90" fill="url(#fade)"/>
+</svg>

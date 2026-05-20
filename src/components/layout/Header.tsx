@@ -1,9 +1,12 @@
 /**
- * Top-of-page header. Wordmark on the left, version + repo link on the right.
+ * Top-of-page header. Wordmark on the left, contact icon + source link on the
+ * right.
  *
  * Kept intentionally sparse: the landing page is dense enough on its own, and
  * the header should fade into the background once the user is reading results.
  */
+import { Mail } from 'lucide-react'
+
 export function Header() {
   return (
     <header className="border-b border-slate-800/60">
@@ -22,14 +25,17 @@ export function Header() {
             v0.1
           </span>
         </div>
-        <nav className="flex items-center gap-5 text-sm">
-          {/* Profile link first (social proof), repo link second (proof of work).
-              When niftyai.com goes live we'll swap the first link back. */}
+        <nav className="flex items-center gap-4 text-sm">
+          {/* Contact icon. Mailto opens the user's default mail client. We use
+              an icon rather than a text link to keep the right side visually
+              quiet, the source link is the primary action here. */}
           <a
-            href="https://github.com/IgorCSIS"
-            className="text-slate-400 transition-colors hover:text-slate-100"
+            href="mailto:jdoe93459@gmail.com"
+            aria-label="Contact NiftyAi"
+            title="Get in touch"
+            className="rounded-md border border-slate-800 p-1.5 text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-100"
           >
-            @IgorCSIS
+            <Mail className="h-4 w-4" aria-hidden />
           </a>
           <a
             href="https://github.com/IgorCSIS/niftystats"
