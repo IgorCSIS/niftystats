@@ -1,61 +1,71 @@
 # NiftyStats
 
-Statistical analysis for the rest of us. Drop in a CSV, get descriptive stats, correlations, regression, time-series, and clustering, each explained in plain English. Runs entirely in your browser. Your data never leaves the page.
+<p align="center">
+  <img src="./public/og-image.png" alt="NiftyStats — statistics that run in your browser" width="100%" />
+</p>
 
-[Live demo](https://igorcsis.github.io/niftystats/) (link goes live after first deploy)
+<p align="center">
+  <strong>Statistical analysis that runs entirely in your browser.</strong><br>
+  Drop in a CSV or Excel file, get descriptive stats, correlations, regression, time-series trends, and clustering, each explained in plain English.
+</p>
 
-## Why
+<p align="center">
+  <a href="https://igorcsis.github.io/niftystats/"><strong>Live demo</strong></a>
+  &nbsp;•&nbsp;
+  <a href="./ARCHITECTURE.md">Architecture</a>
+</p>
 
-Small business owners sit on CSVs of sales, marketing spend, and customer data and have no easy way to ask basic statistical questions of them. The existing options are spreadsheets (limited stats), SaaS analytics tools (expensive, require uploading sensitive data), or hiring an analyst (slow, costs real money). NiftyStats sits in the middle: a free, in-browser tool that runs a proper statistical engine and explains the results.
+---
 
-The hook for non-technical users: nothing you upload ever leaves your browser. The Python engine that does the math runs locally via WebAssembly.
+## What it does
 
-## What's in v1
+Drop a spreadsheet on the page. NiftyStats sniffs column types, runs a full Python statistical engine on the data inside your browser, and returns a dashboard you can read top to bottom without a stats background. Every chart sits next to a short narrative that says what it actually means.
 
-- Drag-and-drop CSV upload, in-browser parsing with type sniffing.
-- Descriptive statistics: means, medians, distributions, missing-value report, outlier flags.
-- Correlation matrix (Pearson and Spearman) with heatmap.
-- Linear and logistic regression with coefficient interpretation.
-- Time-series detection, trend and seasonality decomposition, light forecasting.
-- K-means clustering with auto-elbow.
-- Two-sample hypothesis testing (t-test, chi-square).
-- Plain-English narratives generated from result thresholds (no LLM calls).
-- One-click PDF report export with branding.
+The privacy angle is the point. Nothing is uploaded anywhere. The math happens inside a WebAssembly Python runtime living in the tab. Close the tab and your data is gone with it.
+
+## Features
+
+- Drag-and-drop ingestion for CSV and Excel (.xlsx), with type sniffing for numeric, categorical, datetime, and boolean columns
+- Per-column descriptive stats: distributions, percentiles, missing-value reports, outlier detection
+- Correlation matrix (Pearson and Spearman) with heatmap and weak-pair filtering
+- Linear regression with coefficients and prediction intervals
+- Logistic regression with manual Wald-test p-values and an overfitting guard for small samples
+- Time-series trend detection with 95% prediction intervals
+- K-means clustering with silhouette-based k selection and PCA projection
+- Plain-English narratives generated deterministically from result thresholds, no LLM calls, same input gives same output
+- One-click branded PDF export with per-block pagination
+
+## How it's built
+
+NiftyStats is a static React app with a Python statistics engine running inside the browser via Pyodide. There is no backend. GitHub Pages serves the bundle, Pyodide loads pandas, numpy, scipy, and scikit-learn on first upload, and a templated narrative layer turns the result object into readable prose.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow and folder map.
 
 ## Tech stack
 
-- Vite + React 19 + TypeScript 6
-- Tailwind v4 for styling, custom dark + emerald token set
-- Pyodide for the statistical engine (pandas, numpy, scipy, scikit-learn, statsmodels)
-- Plotly.js for charts
-- PapaParse for CSV parsing
-- jsPDF + html2canvas for the PDF export
-- Framer Motion for tasteful section transitions
-- GitHub Pages + GitHub Actions for hosting
+- **Frontend:** Vite, React 19, TypeScript, Tailwind v4
+- **Stats engine:** Pyodide (pandas, numpy, scipy, scikit-learn)
+- **Charts:** Plotly.js
+- **File parsing:** PapaParse for CSV, SheetJS for Excel
+- **PDF export:** html-to-image + jsPDF
+- **Hosting:** GitHub Pages via GitHub Actions
 
 ## Running locally
 
 ```powershell
-# from C:\Users\Igor\ProjectsPY\niftystats
+# from the project root
 pnpm install
 pnpm dev          # http://localhost:5173
-pnpm build        # production bundle in /dist
+pnpm build        # production bundle in ./dist
 pnpm preview      # serve the production build locally
 ```
 
-## Project layout
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data flow and folder map.
-
 ## Deploy
 
-Pushing to `main` builds and deploys to GitHub Pages automatically. One-time repo setup: Settings → Pages → Source → "GitHub Actions". After that, every push lands at `https://igorcsis.github.io/niftystats/`.
+Pushing to `main` triggers the workflow in `.github/workflows/deploy.yml`, which builds and publishes to GitHub Pages. The site lives at https://igorcsis.github.io/niftystats/.
 
-## Roadmap notes
-
-- The deterministic narrative templates are intentional for v1. A future opt-in "AI explain" mode could pipe results through a local Ollama instance for richer prose. That requires the user to self-host, which is a feature, not a friction: it keeps the privacy story intact.
-- Excel and JSON inputs are deliberately out of scope for v1. CSV-only ships faster and covers 90% of real-world spreadsheets.
+If you fork this, one-time repo setup: Settings → Pages → Source → "GitHub Actions".
 
 ## License
 
-MIT.
+[MIT](./LICENSE).
