@@ -559,11 +559,11 @@ def _run_logistic_regression(
     Fisher information matrix (X' diag(p*(1-p)) X), then z = coef / SE,
     p = 2 * (1 - Phi(|z|)).
 
-    Why no regularization (C=1e9): default sklearn applies L2 with C=1,
-    which shrinks coefficients and complicates SE/p-value interpretation.
-    For a small business-stats use case where the user wants honest
-    "which feature predicts true" answers, unregularized maximum
-    likelihood is the right call.
+    Why no regularization (C=inf): sklearn defaults to L2 with C=1, which
+    shrinks coefficients and complicates SE and p-value interpretation. For
+    a small business-stats use case where the user wants honest "which
+    feature predicts true" answers, unregularized maximum likelihood is the
+    right call.
     """
     if target not in df_raw.columns:
         return _empty_logistic_regression(target, f"Column '{target}' not found.")
@@ -625,9 +625,14 @@ def _run_logistic_regression(
     feature_stds = X_active.std(axis=0, ddof=1)
     safe_stds = np.where(feature_stds == 0, 1.0, feature_stds)
 
-    # Fit with effectively no regularization (large C).
+    # Fit with no regularization. C is the inverse regularization strength,
+    # so C=inf puts the penalty term at zero, which is plain maximum
+    # likelihood. This is spelled with C rather than penalty=None because
+    # penalty was deprecated in scikit-learn 1.8 and is removed in 1.10;
+    # C=inf is the documented replacement and produces identical
+    # coefficients on both sides of that change.
     model = LogisticRegression(
-        penalty=None,
+        C=np.inf,
         solver="lbfgs",
         max_iter=1000,
     )
