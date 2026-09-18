@@ -39,7 +39,7 @@ import json
 import math
 import string
 from time import perf_counter
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -51,36 +51,36 @@ from sklearn.preprocessing import StandardScaler
 # Range of k values we evaluate. 2 to 8 is the practical window for the
 # "natural groups in business data" use case. Below 2 is no grouping; above
 # 8 the clusters get too small to interpret.
-K_MIN = 2
-K_MAX = 8
+K_MIN: Final[int] = 2
+K_MAX: Final[int] = 8
 
 # Minimum sample size to attempt clustering. Below this, silhouette
 # scores are too noisy to trust and clusters are too small to be useful.
 # Set permissively (20) so sample-sized demo datasets cluster; the
 # narrative layer flags low silhouette scores as weak signal anyway.
-MIN_ROWS_FOR_CLUSTERING = 20
+MIN_ROWS_FOR_CLUSTERING: Final[int] = 20
 
 # Minimum number of numeric features. With only one numeric column,
 # clustering reduces to univariate binning, which is better expressed as
 # a histogram. With two, it's a 2D scatter which works fine.
-MIN_FEATURES_FOR_CLUSTERING = 2
+MIN_FEATURES_FOR_CLUSTERING: Final[int] = 2
 
 # How many scatter points we ship back to JS for plotting. Above 2000 the
 # scatter gets visually saturated and the PDF payload grows uncomfortable.
-PROJECTION_SAMPLE_LIMIT = 2000
+PROJECTION_SAMPLE_LIMIT: Final[int] = 2000
 
 # How many distinguishing features we surface per cluster. 3 is the
 # sweet spot: enough to characterize the group, few enough to keep the
 # narrative tight.
-TOP_DISTINGUISHING_FEATURES = 3
+TOP_DISTINGUISHING_FEATURES: Final[int] = 3
 
 # A cluster solution with silhouette below this is reported but flagged
 # as weak in the narrative. Above this we describe it as "real groups."
-SILHOUETTE_WEAK_THRESHOLD = 0.25
+SILHOUETTE_WEAK_THRESHOLD: Final[float] = 0.25
 
 # Cluster labels we hand out: Group A, Group B, ... (loops to A1, A2 if
 # we ever exceed 26, which we won't because K_MAX is 8).
-CLUSTER_LABELS = list(string.ascii_uppercase)
+CLUSTER_LABELS: Final[list[str]] = list(string.ascii_uppercase)
 
 
 def run_clustering(rows_json: str, columns_meta_json: str) -> str:
@@ -276,6 +276,15 @@ def _build_numeric_dataframe(
 
 
 def _skip(reason: str) -> str:
+    """
+    Build the "analysis not applicable" payload.
+
+    Parameters:
+        reason (str): Plain-language explanation shown to the user.
+
+    Returns:
+        str: JSON string carrying only the skip reason.
+    """
     payload = {"skippedReason": reason}
     return json.dumps(payload)
 
@@ -284,15 +293,31 @@ def _skip(reason: str) -> str:
 
 
 def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Walk a result structure and coerce numpy scalars to plain Python types
+    that json.dumps can encode.
+
+    NaN and infinity have no JSON representation, so they become null rather
+    than producing output that JSON.parse would reject on the JS side.
+
+    Parameters:
+        obj (Any): Any node of the result tree: scalar, dict, list, or array.
+
+    Returns:
+        Any: The same structure with numpy scalars replaced by Python
+            equivalents and non-finite floats replaced by None.
+    """
     if isinstance(obj, (float, np.floating)):
         value = float(obj)
         if math.isnan(value) or math.isinf(value):
             return None
         return value
-    if isinstance(obj, (int, np.integer)):
-        return int(obj)
+    # bool is a subclass of int, so this branch has to come first or True
+    # would be matched by the int branch below and serialized as 1.
     if isinstance(obj, (bool, np.bool_)):
         return bool(obj)
+    if isinstance(obj, (int, np.integer)):
+        return int(obj)
     if isinstance(obj, dict):
         return {key: _sanitize_for_json(val) for key, val in obj.items()}
     if isinstance(obj, list):
@@ -303,6 +328,19 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def _json_default(value: Any) -> Any:
+    """
+    Fallback encoder passed to json.dumps for values _sanitize_for_json did
+    not already convert.
+
+    Parameters:
+        value (Any): The object json.dumps could not serialize.
+
+    Returns:
+        Any: A JSON-encodable equivalent of value.
+
+    Raises:
+        TypeError: If value is of a type this encoder does not handle.
+    """
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):

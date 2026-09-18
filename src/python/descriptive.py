@@ -35,37 +35,37 @@ import json
 import math
 from datetime import datetime, timezone
 from time import perf_counter
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 # How many percentile cuts we compute per numeric column. p50 == median.
-PERCENTILES = [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99]
+PERCENTILES: Final[list[float]] = [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99]
 
 # Threshold for the modified Z-score outlier test. 3.5 is the Iglewicz-Hoaglin
 # (1993) recommendation, more robust than the classical 3 sigma rule on
 # skewed or heavy-tailed data because it builds on MAD instead of std.
-MODIFIED_Z_THRESHOLD = 3.5
+MODIFIED_Z_THRESHOLD: Final[float] = 3.5
 
 # Cap for Shapiro-Wilk. The test loses meaningfulness on huge samples (it
 # rejects normality for any tiny deviation), so we fall back to
 # Anderson-Darling above this size.
-SHAPIRO_MAX_N = 5000
+SHAPIRO_MAX_N: Final[int] = 5000
 
 # How many top categorical values we report. Five is the sweet spot for
 # narratives: enough to communicate the long-tail shape, not so many that
 # the UI gets cluttered.
-TOP_CATEGORICAL_VALUES = 5
+TOP_CATEGORICAL_VALUES: Final[int] = 5
 
 # Histogram bin cap. Freedman-Diaconis can suggest hundreds of bins for
 # wide-ranging data, which produces hair-thin bars no one can read.
-MAX_HISTOGRAM_BINS = 40
+MAX_HISTOGRAM_BINS: Final[int] = 40
 
 # How many outlier values we ship back to the UI for plotting. Past 50
 # the strip chart turns into a black bar and the user learns nothing new.
-MAX_OUTLIER_VALUES = 50
+MAX_OUTLIER_VALUES: Final[int] = 50
 
 
 def run_descriptive(rows_json: str, columns_meta_json: str) -> str:
@@ -661,6 +661,10 @@ def _sanitize_for_json(obj: Any) -> Any:
         if math.isnan(value) or math.isinf(value):
             return None
         return value
+    # bool is a subclass of int, so this branch has to come first or True
+    # would be matched by the int branch below and serialized as 1.
+    if isinstance(obj, (bool, np.bool_)):
+        return bool(obj)
     if isinstance(obj, (int, np.integer)):
         return int(obj)
     if isinstance(obj, dict):

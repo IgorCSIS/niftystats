@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import math
 from time import perf_counter
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -41,19 +41,19 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 
 # Cap on how many highlighted top correlations we ship per category.
-TOP_CORRELATION_LIMIT = 3
+TOP_CORRELATION_LIMIT: Final[int] = 3
 
 # Minimum |r| a pair must clear to qualify for the move-together /
 # move-opposite groups. Below this the relationship is too weak to be
 # worth featuring as a "strongest" finding. Pairs that don't clear are
 # still visible in the heatmap, just not in the highlight strip.
-MIN_REPORTABLE_R = 0.15
+MIN_REPORTABLE_R: Final[float] = 0.15
 
 # Correlations at or above this threshold get flagged as "essentially the
 # same thing" so we can collapse 3 perfect-correlation findings into a
 # single meta-observation (e.g., sales sample where marketing_spend,
 # revenue, and customers all scale with campaign size).
-SAME_THING_R = 0.95
+SAME_THING_R: Final[float] = 0.95
 
 # A pair gets flagged as "non-linear" when both:
 #   1. |spearman - pearson| exceeds NON_LINEAR_GAP_THRESHOLD, AND
@@ -66,19 +66,19 @@ SAME_THING_R = 0.95
 # genuinely informative cases. Requiring at least one strong correlation
 # keeps the bucket focused on actual non-linearity (curvature, thresholds,
 # diminishing returns) rather than weak-and-noisy column pairs.
-NON_LINEAR_GAP_THRESHOLD = 0.20
-NON_LINEAR_MIN_STRENGTH = 0.4
+NON_LINEAR_GAP_THRESHOLD: Final[float] = 0.20
+NON_LINEAR_MIN_STRENGTH: Final[float] = 0.4
 
 # Variance Inflation Factor cutoff for "highly collinear." 10 is the
 # conventional rule of thumb in regression diagnostics (Belsley/Kuh/Welsch).
-VIF_HIGH_THRESHOLD = 10.0
+VIF_HIGH_THRESHOLD: Final[float] = 10.0
 
 # Significance level for marking coefficients as "significant" in the UI.
-SIGNIFICANCE_ALPHA = 0.05
+SIGNIFICANCE_ALPHA: Final[float] = 0.05
 
 # Minimum sample size before we attempt regression. Below this, p-values
 # are unreliable and the regression is more likely to mislead than help.
-MIN_REGRESSION_N = 20
+MIN_REGRESSION_N: Final[int] = 20
 
 
 def run_relational(rows_json: str, columns_meta_json: str) -> str:
@@ -307,6 +307,17 @@ def _extract_top_correlations(
     }
 
     def is_new(record: dict[str, Any]) -> bool:
+        """
+        Report whether a correlation record names a column pair that the
+        non-linear section has not already covered, so the same pair is not
+        reported twice under two headings.
+
+        Parameters:
+            record (dict[str, Any]): A correlation record with columnA and columnB.
+
+        Returns:
+            bool: True when the pair has not already been reported.
+        """
         return frozenset({record["columnA"], record["columnB"]}) not in non_linear_keys
 
     # Filter to ACTUAL positive / negative correlations that clear the
@@ -530,8 +541,8 @@ def _empty_logistic_regression(target: str, skipped_reason: str) -> dict[str, An
 # treat as exploratory" warning whenever n < SAMPLE_RELIABILITY_N or
 # minority < MINORITY_RELIABILITY so users don't over-interpret tiny
 # datasets even though the math runs.
-MIN_LOGISTIC_N = 20
-MIN_MINORITY_CLASS = 5
+MIN_LOGISTIC_N: Final[int] = 20
+MIN_MINORITY_CLASS: Final[int] = 5
 
 
 def _run_logistic_regression(
@@ -728,15 +739,31 @@ def _empty_result(compute_ms: int) -> dict[str, Any]:
 
 
 def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Walk a result structure and coerce numpy scalars to plain Python types
+    that json.dumps can encode.
+
+    NaN and infinity have no JSON representation, so they become null rather
+    than producing output that JSON.parse would reject on the JS side.
+
+    Parameters:
+        obj (Any): Any node of the result tree: scalar, dict, list, or array.
+
+    Returns:
+        Any: The same structure with numpy scalars replaced by Python
+            equivalents and non-finite floats replaced by None.
+    """
     if isinstance(obj, (float, np.floating)):
         value = float(obj)
         if math.isnan(value) or math.isinf(value):
             return None
         return value
-    if isinstance(obj, (int, np.integer)):
-        return int(obj)
+    # bool is a subclass of int, so this branch has to come first or True
+    # would be matched by the int branch below and serialized as 1.
     if isinstance(obj, (bool, np.bool_)):
         return bool(obj)
+    if isinstance(obj, (int, np.integer)):
+        return int(obj)
     if isinstance(obj, dict):
         return {key: _sanitize_for_json(val) for key, val in obj.items()}
     if isinstance(obj, list):
@@ -747,6 +774,19 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def _json_default(value: Any) -> Any:
+    """
+    Fallback encoder passed to json.dumps for values _sanitize_for_json did
+    not already convert.
+
+    Parameters:
+        value (Any): The object json.dumps could not serialize.
+
+    Returns:
+        Any: A JSON-encodable equivalent of value.
+
+    Raises:
+        TypeError: If value is of a type this encoder does not handle.
+    """
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):
