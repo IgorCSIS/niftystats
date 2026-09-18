@@ -38,3 +38,7 @@ desktop.ini
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Python bytecode (the engines are shipped as source and run in Pyodide)
+__pycache__/
+*.py[cod]

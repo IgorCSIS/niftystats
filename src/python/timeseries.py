@@ -36,7 +36,7 @@ import json
 import math
 from datetime import timedelta
 from time import perf_counter
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -44,23 +44,23 @@ from scipy import stats as scipy_stats
 
 # Minimum points required for a trustworthy trend fit. Fewer and the slope
 # becomes wildly sensitive to individual points.
-MIN_TS_POINTS = 10
+MIN_TS_POINTS: Final[int] = 10
 
 # Forecast horizon is min(MAX_FORECAST_POINTS, 25% of historical length).
 # Hard cap keeps the visual readable on wide CSVs.
-MAX_FORECAST_POINTS = 12
-FORECAST_PCT = 0.25
+MAX_FORECAST_POINTS: Final[int] = 12
+FORECAST_PCT: Final[float] = 0.25
 
 # Z-score for a 95% prediction interval under the normal-residuals
 # assumption. We use the standard 1.96 multiplier; for small samples this
 # slightly under-estimates the interval, but the resulting band is still
 # directionally honest about the level of forecast uncertainty.
-Z_95 = 1.96
+Z_95: Final[float] = 1.96
 
 # Cadence-detection bands. Median gap in days falls into one of these
 # buckets; the label feeds the narrative ("weekly cadence" reads cleaner
 # than "median gap of 7.0 days").
-CADENCE_BUCKETS = [
+CADENCE_BUCKETS: Final[list[tuple[float, str]]] = [
     (1.5, "daily"),
     (9.0, "weekly"),
     (45.0, "monthly"),
@@ -228,6 +228,15 @@ def _cadence_label(median_gap_days: float) -> str:
 
 
 def _skip(reason: str) -> str:
+    """
+    Build the "analysis not applicable" payload.
+
+    Parameters:
+        reason (str): Plain-language explanation shown to the user.
+
+    Returns:
+        str: JSON string carrying only the skip reason.
+    """
     payload = {
         "serieses": [],
         "skippedReason": reason,
@@ -240,15 +249,31 @@ def _skip(reason: str) -> str:
 
 
 def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Walk a result structure and coerce numpy scalars to plain Python types
+    that json.dumps can encode.
+
+    NaN and infinity have no JSON representation, so they become null rather
+    than producing output that JSON.parse would reject on the JS side.
+
+    Parameters:
+        obj (Any): Any node of the result tree: scalar, dict, list, or array.
+
+    Returns:
+        Any: The same structure with numpy scalars replaced by Python
+            equivalents and non-finite floats replaced by None.
+    """
     if isinstance(obj, (float, np.floating)):
         value = float(obj)
         if math.isnan(value) or math.isinf(value):
             return None
         return value
-    if isinstance(obj, (int, np.integer)):
-        return int(obj)
+    # bool is a subclass of int, so this branch has to come first or True
+    # would be matched by the int branch below and serialized as 1.
     if isinstance(obj, (bool, np.bool_)):
         return bool(obj)
+    if isinstance(obj, (int, np.integer)):
+        return int(obj)
     if isinstance(obj, dict):
         return {key: _sanitize_for_json(val) for key, val in obj.items()}
     if isinstance(obj, list):
@@ -259,6 +284,19 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def _json_default(value: Any) -> Any:
+    """
+    Fallback encoder passed to json.dumps for values _sanitize_for_json did
+    not already convert.
+
+    Parameters:
+        value (Any): The object json.dumps could not serialize.
+
+    Returns:
+        Any: A JSON-encodable equivalent of value.
+
+    Raises:
+        TypeError: If value is of a type this encoder does not handle.
+    """
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):
