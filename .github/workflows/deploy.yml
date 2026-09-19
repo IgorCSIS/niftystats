@@ -61,7 +61,7 @@ jobs:
         run: pnpm lint
 
       - name: Audit the Python against the Appendix A conventions
-        run: python tools/appendix_a_audit.py src/python/*.py
+        run: python3 tools/appendix_a_audit.py src/python/*.py
 
       - name: Build
         run: pnpm build
