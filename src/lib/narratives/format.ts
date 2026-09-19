@@ -15,10 +15,10 @@
  *   formatNumber(3.14)       -> "3.14"
  *   formatNumber(1234)       -> "1.23k"
  *   formatNumber(1_500_000)  -> "1.5M"
- *   formatNumber(null)       -> "—"
+ *   formatNumber(null)       -> "n/a"
  */
 export function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
   const abs = Math.abs(value)
   if (abs === 0) return '0'
   if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`
@@ -40,7 +40,7 @@ export function formatStatValue(
   value: number | null | undefined,
   hint?: 'year' | 'standard',
 ): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
   if (hint === 'year') {
     return Math.round(value).toString()
   }
@@ -50,7 +50,7 @@ export function formatStatValue(
 /** Format a fraction (0..1) as a percentage with 0 or 1 decimals. */
 export function formatPct(fraction: number | null | undefined): string {
   if (fraction === null || fraction === undefined || Number.isNaN(fraction))
-    return '—'
+    return 'n/a'
   const pct = fraction * 100
   if (Math.abs(pct) >= 10) return `${pct.toFixed(0)}%`
   if (Math.abs(pct) >= 1) return `${pct.toFixed(1)}%`
@@ -59,7 +59,7 @@ export function formatPct(fraction: number | null | undefined): string {
 
 /** Format an ISO timestamp as a short date (no time). */
 export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'n/a'
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
   return date.toISOString().slice(0, 10)

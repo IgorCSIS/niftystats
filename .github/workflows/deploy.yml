@@ -57,6 +57,12 @@ jobs:
         # nothing in our dep graph requires postinstall to function.
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Audit the Python against the Appendix A conventions
+        run: python tools/appendix_a_audit.py src/python/*.py
+
       - name: Build
         run: pnpm build
 

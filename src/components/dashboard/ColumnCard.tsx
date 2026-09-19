@@ -102,7 +102,7 @@ function buildStatItems(summary: ColumnSummary): Array<{
         {
           label: 'std',
           value: formatNumber(summary.std),
-          detail: `CV ${summary.cv !== null && Number.isFinite(summary.cv) ? summary.cv.toFixed(2) : '—'}`,
+          detail: `CV ${summary.cv !== null && Number.isFinite(summary.cv) ? summary.cv.toFixed(2) : 'n/a'}`,
         },
         {
           label: 'MAD',

@@ -22,7 +22,7 @@ export function cn(...inputs: ClassValue[]): string {
  * is worth the few lines of logic.
  */
 export function formatStat(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
   const abs = Math.abs(value)
   if (abs === 0) return '0'
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`

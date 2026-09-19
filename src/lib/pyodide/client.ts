@@ -137,10 +137,10 @@ class EngineRuntime {
       step: 'Warming up the engine',
       detail: 'Compiling the NiftyStats analysis modules. Almost done.',
     })
-    // Run all three modules. Each registers its top-level entry function
-    // (`run_descriptive`, `run_relational`, `run_clustering`) in the
-    // Python global namespace; subsequent analyze() calls invoke them
-    // directly via globals.set + runPython.
+    // Run all four modules. Each registers its top-level entry function
+    // (`run_descriptive`, `run_relational`, `run_clustering`,
+    // `run_timeseries`) in the Python global namespace; subsequent
+    // analyze() calls invoke them directly via globals.set + runPython.
     this.pyodide.runPython(descriptiveScript)
     this.pyodide.runPython(relationalScript)
     this.pyodide.runPython(clusteringScript)

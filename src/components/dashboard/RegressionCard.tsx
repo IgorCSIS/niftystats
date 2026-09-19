@@ -132,7 +132,12 @@ function LinearCard({ regression }: { regression: LinearRegressionAnalysis }) {
                               ★
                             </span>
                           ) : (
-                            <span className="font-mono text-[10px] text-slate-600">—</span>
+                            <span
+                              className="font-mono text-[10px] text-slate-600"
+                              title="p ≥ 0.05"
+                            >
+                              ·
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -252,7 +257,12 @@ function LogisticCard({ regression }: { regression: LogisticRegressionAnalysis }
                               ★
                             </span>
                           ) : (
-                            <span className="font-mono text-[10px] text-slate-600">—</span>
+                            <span
+                              className="font-mono text-[10px] text-slate-600"
+                              title="p ≥ 0.05"
+                            >
+                              ·
+                            </span>
                           )}
                         </td>
                       </tr>

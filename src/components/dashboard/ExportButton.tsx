@@ -53,14 +53,13 @@ export function ExportButton({ getTarget, csvFilename }: ExportButtonProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [messageIndex, setMessageIndex] = useState(0)
 
-  // Rotate through the progress messages while exporting. Reset to the
-  // first message whenever we leave the exporting state so the next click
-  // starts the cycle fresh.
+  // Rotate through the progress messages while exporting. The reset to the
+  // first message happens in handleClick rather than here: resetting inside
+  // the effect body means every arrival at a non-exporting state schedules
+  // another render, which is a cascade React will warn about and which this
+  // component has no reason to pay for.
   useEffect(() => {
-    if (state !== 'exporting') {
-      setMessageIndex(0)
-      return
-    }
+    if (state !== 'exporting') return
     const id = window.setInterval(() => {
       setMessageIndex((i) => Math.min(i + 1, BUILDING_MESSAGES.length - 1))
     }, MESSAGE_INTERVAL_MS)
@@ -75,6 +74,7 @@ export function ExportButton({ getTarget, csvFilename }: ExportButtonProps) {
       return
     }
 
+    setMessageIndex(0)
     setState('exporting')
     setErrorMessage(null)
     try {

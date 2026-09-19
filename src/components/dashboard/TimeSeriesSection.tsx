@@ -153,7 +153,7 @@ function SeriesCard({ series }: { series: TimeSeriesAnalysis }) {
             },
             {
               label: '95% range',
-              value: `${formatNumber(lastForecastLower)} – ${formatNumber(lastForecastUpper)}`,
+              value: `${formatNumber(lastForecastLower)} to ${formatNumber(lastForecastUpper)}`,
             },
           ]}
         />

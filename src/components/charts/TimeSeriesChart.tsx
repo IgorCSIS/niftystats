@@ -19,7 +19,8 @@
  */
 
 import type { TimeSeriesAnalysis } from '@/types/stats'
-import { DARK_LAYOUT, PLOTLY_CONFIG, PlotlyChart } from './PlotlyChart'
+import { PlotlyChart } from './PlotlyChart'
+import { DARK_LAYOUT, PLOTLY_CONFIG } from './plotlyTheme'
 
 interface TimeSeriesChartProps {
   series: TimeSeriesAnalysis

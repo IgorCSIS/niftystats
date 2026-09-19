@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 536" width="1200" height="536" role="img" aria-label="The six loading steps NiftyStats runs once per browser before the first analysis, in order, with the words the page shows at each one.">
+  <title>The one-time wait</title>
+  <desc>Six steps in src/lib/pyodide/client.ts: downloading the Python engine, then numpy, pandas, scipy and scikit-learn from the jsDelivr CDN, then compiling the four bundled analysis modules. After the sixth the engine reports ready and every later analysis skips all of it.</desc>
+  <rect width="1200" height="536" rx="16" fill="#020617"/>
+  <rect x="0.5" y="0.5" width="1199" height="535" rx="15.5" fill="none" stroke="#1E293B"/>
+  <text x="48" y="42" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#F8FAFC">The first upload pays for the engine. Every one after it is free.</text>
+  <text x="48" y="66" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#94A3B8">src/lib/pyodide/client.ts walks these six steps once per browser. The wording under each one is what the page actually puts on screen while you wait.</text>
+  <path d="M92 128 L92 428" stroke="#334155" stroke-width="2"/>
+  <circle cx="92" cy="128" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="133" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">1</text>
+  <text x="130" y="125" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Downloading the Python engine</text>
+  <text x="130" y="145" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">About 10MB on first visit. Your browser will cache it after this, so future visits load in under a second.</text>
+  <text x="1152" y="130" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">cdn.jsdelivr.net</text>
+  <circle cx="92" cy="178" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="183" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">2</text>
+  <text x="130" y="175" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Loading numpy</text>
+  <text x="130" y="195" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">Numerical arrays and linear algebra.</text>
+  <text x="1152" y="180" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">cdn.jsdelivr.net</text>
+  <circle cx="92" cy="228" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="233" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">3</text>
+  <text x="130" y="225" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Loading pandas</text>
+  <text x="130" y="245" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">Dataframes and column operations.</text>
+  <text x="1152" y="230" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">cdn.jsdelivr.net</text>
+  <circle cx="92" cy="278" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="283" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">4</text>
+  <text x="130" y="275" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Loading scipy</text>
+  <text x="130" y="295" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">Statistical tests and robust estimators. Bigger package, hang tight.</text>
+  <text x="1152" y="280" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">cdn.jsdelivr.net</text>
+  <circle cx="92" cy="328" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="333" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">5</text>
+  <text x="130" y="325" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Loading scikit-learn</text>
+  <text x="130" y="345" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">Machine-learning toolkit for the clustering pass. Last big download, then we're ready.</text>
+  <text x="1152" y="330" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">cdn.jsdelivr.net</text>
+  <circle cx="92" cy="378" r="15" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="92" y="383" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#CBD5E1">6</text>
+  <text x="130" y="375" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#F8FAFC">Warming up the engine</text>
+  <text x="130" y="395" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">Compiling the NiftyStats analysis modules. Almost done.</text>
+  <text x="1152" y="380" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#7C8CA3">bundled with the app</text>
+  <circle cx="92" cy="428" r="15" fill="#34D399"/>
+  <text x="130" y="425" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#34D399">ready</text>
+  <text x="130" y="445" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#94A3B8">The engine stays warm for the life of the tab. A second file skips all six steps.</text>
+  <text x="48" y="490" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#94A3B8">Steps one to five come from cdn.jsdelivr.net, and public/sw.js caches exactly those URLs, so a returning visitor pays for none of them again.</text>
+  <text x="48" y="512" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#94A3B8">Step six is local. It runs the four files in src/python straight out of the bundle, which is what registers the entry functions the analyses call.</text>
+  <path d="M48 466 L1152 466" stroke="#1E293B" stroke-width="1"/>
+</svg>

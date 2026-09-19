@@ -15,7 +15,8 @@
  */
 
 import type { ColumnSummary } from '@/types/stats'
-import { DARK_LAYOUT, PLOTLY_CONFIG, PlotlyChart } from './PlotlyChart'
+import { PlotlyChart } from './PlotlyChart'
+import { DARK_LAYOUT, PLOTLY_CONFIG } from './plotlyTheme'
 
 interface MissingValuesChartProps {
   columns: ColumnSummary[]

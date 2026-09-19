@@ -61,19 +61,21 @@ CSV file -> DropZone -> PapaParse (web worker)
 
 ```
 src/
-  components/    React components, grouped by feature (upload, dashboard, charts, pdf)
-  lib/           JS utilities (pyodide bootstrap, papaparse wrapper, narrative builders)
+  components/    React components, grouped by feature (upload, dashboard, charts, layout)
+  lib/           JS utilities (pyodide bootstrap, csv wrapper, narrative builders, pdf export)
   python/        Python modules executed inside Pyodide
+  workers/       The tabular parser and column type sniffer, off the main thread
   types/         TypeScript interfaces, source of truth for the JS<->Python contract
   pages/         Top-level route components
 ```
 
 ## Deployment
 
-`.github/workflows/deploy.yml` builds on push to `main` and publishes `dist/` to GitHub Pages using the official `actions/deploy-pages` action. Vite is configured with `base: '/niftystats/'` so asset paths resolve under the Pages subpath at `https://igorcsis.github.io/niftystats/`.
+`.github/workflows/deploy.yml` runs eslint, audits `src/python` against the Appendix A conventions, builds on push to `main`, and publishes `dist/` to GitHub Pages using the official `actions/deploy-pages` action. Vite is configured with `base: '/niftystats/'` so asset paths resolve under the Pages subpath at `https://igorcsis.github.io/niftystats/`.
+
+`public/sw.js` handles repeat visits. `src/main.tsx` registers it in production builds only. It is cache-first over `cdn.jsdelivr.net/pyodide/` URLs and nothing else, which is safe because those URLs carry the version: bumping Pyodide changes the key and misses the cache by design. The app's own assets are left to Vite's fingerprinting and the browser's HTTP cache, so a stale bundle is never the service worker's fault.
 
 ## Open questions for later milestones
 
-- **Pyodide caching.** First load is ~10s. Service worker for offline + faster repeat visits, or just rely on browser HTTP cache? Decision deferred until milestone 8.
 - **CSV streaming.** PapaParse worker mode handles up to ~100k rows comfortably. Above that we need chunked passes through the engine; deferring unless real users hit the wall.
 - **Future LLM narratives.** The deterministic templates are v1. A future opt-in "AI explain" mode could call a local Ollama instance via a self-host README path. Not part of any current milestone.

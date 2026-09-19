@@ -83,52 +83,6 @@ function describeModule(mod: unknown): string {
   return Object.keys(mod as object).join(',') || '(no enumerable keys)'
 }
 
-/**
- * Shared dark-theme layout. Component-specific layouts can spread this and
- * override individual fields.
- */
-export const DARK_LAYOUT = {
-  paper_bgcolor: 'rgba(0,0,0,0)',
-  plot_bgcolor: 'rgba(0,0,0,0)',
-  font: {
-    color: '#94a3b8', // slate-400
-    family: "Inter, 'Segoe UI', system-ui, sans-serif",
-    size: 11,
-  },
-  xaxis: {
-    gridcolor: '#1e293b', // slate-800
-    linecolor: '#334155', // slate-700
-    zerolinecolor: '#334155',
-    tickcolor: '#334155',
-    tickfont: { color: '#94a3b8', size: 10 },
-  },
-  yaxis: {
-    gridcolor: '#1e293b',
-    linecolor: '#334155',
-    zerolinecolor: '#334155',
-    tickcolor: '#334155',
-    tickfont: { color: '#94a3b8', size: 10 },
-  },
-  margin: { t: 10, b: 35, l: 50, r: 10 },
-  showlegend: false,
-  hoverlabel: {
-    bgcolor: '#0f172a',
-    bordercolor: '#1e293b',
-    font: {
-      color: '#e2e8f0',
-      family: 'JetBrains Mono, monospace',
-      size: 11,
-    },
-  },
-} as const
-
-/** Default Plotly config: hide the modebar (noisy on dashboards). */
-export const PLOTLY_CONFIG = {
-  displayModeBar: false,
-  responsive: true,
-  staticPlot: false,
-} as const
-
 /** Skeleton shown while the Plotly chunk downloads. */
 function ChartSkeleton({ height }: { height: number }) {
   return (

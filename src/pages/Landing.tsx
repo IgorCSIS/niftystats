@@ -82,7 +82,7 @@ export function Landing() {
               aria-hidden
               className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]"
             />
-            niftystats v1.0 preview
+            niftystats v0.1 preview
           </div>
 
           <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-5xl">
